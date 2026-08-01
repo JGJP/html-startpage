@@ -2,9 +2,11 @@
 
 A tiny generator that turns one or more YAML files into a **single HTML startpage**:
 a minimal, scrollable **black column of links** over an **auto-rotating photo
-background** (Bonjourr-style). Each link shows its site's favicon — preferring the
-dark-mode variant so icons read well on black — fetched at build time and baked
-inline. Point your browser's home / new-tab page at the generated file.
+background** (Bonjourr-style). Each YAML file is a **workspace** — its own page of
+links — and the **left/right arrow keys** switch between them. Each link shows its
+site's favicon — preferring the dark-mode variant so icons read well on black —
+fetched at build time and baked inline. Point your browser's home / new-tab page at
+the generated file.
 
 Written in Zig (0.16), rendered in [Berkeley Mono](https://berkeleygraphics.com/typefaces/berkeley-mono/)
 when installed (falling back to the system monospace stack).
@@ -31,15 +33,19 @@ Requires **Zig 0.16.0**.
 ```sh
 zig build                 # builds ./zig-out/bin/startpage
 zig build run -- config.yaml -o startpage.html
-zig build example         # renders examples/startpage.yaml to zig-out/startpage.html
+zig build example         # renders examples/workspaces/ to zig-out/startpage.html
 zig build test            # run unit tests, then build & open startpage.html in your browser
 ```
 
 ## Usage
 
 ```sh
-startpage [options] <config.yaml> [more.yaml ...]
+startpage [options] <config.yaml | dir> [more ...]
 ```
+
+Each file is a **workspace** (a switchable page); a directory argument is expanded
+to the sorted `*.yaml`/`*.yml` files it contains, so dropping a new file into it
+adds a workspace. See [Workspaces](#workspaces).
 
 | Option | Description |
 | --- | --- |
@@ -54,16 +60,18 @@ For a fast, fully-offline build, combine both: `startpage config.yaml --no-favic
 Examples:
 
 ```sh
-startpage config.yaml                     # -> startpage.html
+startpage config.yaml                     # one workspace -> startpage.html
 startpage config.yaml -o ~/home.html      # custom output path
-startpage work.yaml personal.yaml -o -    # merge two files, print to stdout
+startpage workspaces/ -o -                # every *.yaml in a dir, print to stdout
+startpage work.yaml personal.yaml         # two workspaces, arrow keys switch
 ```
 
 ## Config format
 
-Each file may define an optional `title`, an optional `lang` (default `en`), and
-a list of `groups`. Every group has a `title` and a list of `links`; each link
-has a `name`, a `url` (`uri` is accepted as an alias), and an optional `icon`.
+Each file (workspace) may define an optional `title`, an optional `lang` (default
+`en`), and a list of `groups`. Every group has a `title` and a list of `links`;
+each link has a `name`, a `url` (`uri` is accepted as an alias), and an optional
+`icon`.
 The `icon` is either an **image reference** (URL, `data:` URI, or path) used
 directly as the favicon, or a short **glyph**. Setting `icon` overrides and skips
 favicon fetching for that link.
@@ -87,7 +95,8 @@ groups:
         icon: "✎"                  # a glyph also works
 ```
 
-See [`examples/startpage.yaml`](examples/startpage.yaml) for a fuller example.
+See [`examples/workspaces/`](examples/workspaces/) for a fuller two-workspace
+example.
 
 > **Block style only.** Use indented block syntax (as above). The vendored
 > parser does not support YAML flow style (`links: [{name: x, url: y}]`), and
@@ -132,15 +141,27 @@ and uses a small amount of JavaScript to rotate. Pass `--no-background` for a
 plain black page that makes no external requests. The photo set is defined in
 `src/render.zig` (`backgrounds`).
 
-### Multiple files
-
-You can pass several YAML files. Their `groups` are **concatenated in order**,
-and `title`/`lang` are taken from the **first file that sets them**. This lets
-you keep, say, `work.yaml` and `personal.yaml` separate and combine them at
-build time.
-
 All text (titles, names, URLs, icons) is HTML-escaped, so arbitrary content is
 safe to include.
+
+## Workspaces
+
+Each input **file is a workspace**: its own page of links. On the page the
+**right arrow** switches to the next workspace and the **left arrow** to the
+previous (wrapping around); small dots under the title show how many there are and
+which is active. Only the active workspace is shown, and the type-to-filter search
+applies to it alone. With scripting disabled, the first workspace is shown.
+
+Workspaces come from the files you pass, **in order**. A **directory** argument is
+expanded to the `*.yaml`/`*.yml` files it contains, sorted by name — so keeping a
+`workspaces/` directory and dropping a new file into it adds a workspace with no
+other change. To control ordering, prefix file names with a number
+(`00-work.yaml`, `10-personal.yaml`); the leading `NN-`/`NN_` is stripped from the
+name used as a fallback title.
+
+A workspace's title is its `title:` field, or — if absent — its file name (minus
+the extension and any order prefix). The document `lang` is taken from the first
+file that sets it; the browser tab title is the first workspace's title.
 
 ## Project layout
 
@@ -148,12 +169,12 @@ safe to include.
 build.zig            build script (vendored yaml module + run/example/test steps)
 build.zig.zon        package manifest
 src/
-  main.zig           CLI: argument parsing and orchestration
-  config.zig         YAML schema + multi-file loading/merging
+  main.zig           CLI: argument parsing, directory expansion, orchestration
+  config.zig         YAML schema + per-file workspace loading
   favicon.zig        fetches + bakes site favicons as inline data: URIs
-  render.zig         HTML/CSS generation and escaping
+  render.zig         HTML/CSS generation, workspace switching, escaping
 examples/
-  startpage.yaml     sample config
+  workspaces/        sample workspaces (one file each, arrow keys switch)
 vendor/zig-yaml/     vendored YAML parser (see vendor/zig-yaml/VENDOR.md)
 ```
 
