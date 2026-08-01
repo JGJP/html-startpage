@@ -1,0 +1,20 @@
+.{
+    .name = .startpage,
+    .version = "0.1.0",
+    .fingerprint = 0x550ab07cbba1c5c6,
+    .minimum_zig_version = "0.16.0",
+
+    // No package-manager dependencies: zig-yaml is vendored under
+    // vendor/zig-yaml (see vendor/zig-yaml/VENDOR.md for the reason).
+    .dependencies = .{},
+
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "vendor",
+        "examples",
+        "README.md",
+        "LICENSE",
+    },
+}
