@@ -4,3 +4,6 @@ zig-out/
 *.png
 *.html
 !examples/*.html
+
+# your real (private) workspace configs — never committed
+/config/

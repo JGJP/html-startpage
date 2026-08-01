@@ -1,0 +1,29 @@
+title: work
+
+groups:
+  - title: repos
+    links:
+      - name: github
+        url: https://github.com
+      - name: gitlab
+        url: https://gitlab.com
+      - name: pull requests
+        url: https://github.com/pulls
+
+  - title: ci and infra
+    links:
+      - name: actions
+        url: https://github.com/issues
+      - name: dockerhub
+        url: https://hub.docker.com
+      - name: status
+        url: https://www.githubstatus.com
+
+  - title: docs
+    links:
+      - name: mdn
+        url: https://developer.mozilla.org
+      - name: zig
+        url: https://ziglang.org/documentation/master/
+      - name: caniuse
+        url: https://caniuse.com
