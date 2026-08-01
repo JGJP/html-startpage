@@ -1,6 +1,7 @@
-//! Config schema and loading. Each YAML input file is parsed and merged into a
-//! single `Config`: `title` and `lang` are taken from the first file that sets
-//! them, and every file's `groups` are concatenated in the order given.
+//! Config schema and loading. Each YAML input file becomes one **workspace** —
+//! a self-contained set of `groups` shown as its own switchable page. A file's
+//! workspace `title` is its `title:` field (or, if absent, its file name); the
+//! document `lang` is taken from the first file that sets it.
 
 const std = @import("std");
 const yaml = @import("yaml");
@@ -21,10 +22,15 @@ pub const Group = struct {
     links: []const Link,
 };
 
+/// One switchable page of links, contributed by a single input file.
+pub const Workspace = struct {
+    title: []const u8,
+    groups: []const Group,
+};
+
 pub const Config = struct {
-    title: []const u8 = "startpage",
     lang: []const u8 = "en",
-    groups: []const Group = &.{},
+    workspaces: []const Workspace = &.{},
 };
 
 // --- YAML parse shapes (all optional so files may contribute only some parts) ---
@@ -48,9 +54,10 @@ const FileConfig = struct {
     groups: ?[]const RawGroup = null,
 };
 
-/// One file's contribution after `uri`/`url` normalization.
+/// One file's contribution after `uri`/`url` normalization. `title` is already
+/// resolved (the file's `title:` or a name derived from its path).
 const Parsed = struct {
-    title: ?[]const u8 = null,
+    title: []const u8,
     lang: ?[]const u8 = null,
     groups: []const Group = &.{},
 };
@@ -98,7 +105,7 @@ pub fn load(gpa: Allocator, arena: Allocator, io: std.Io, paths: []const []const
         };
 
         try files.append(arena, .{
-            .title = fc.title,
+            .title = fc.title orelse deriveTitle(path),
             .lang = fc.lang,
             .groups = try normalizeGroups(arena, path, fc.groups orelse &.{}),
         });
@@ -111,6 +118,18 @@ pub fn load(gpa: Allocator, arena: Allocator, io: std.Io, paths: []const []const
         },
         else => |e| return e,
     };
+}
+
+/// A workspace name derived from a file path: its base name without extension,
+/// minus an optional leading ordering prefix like `01-` or `02_` (which lets
+/// file names control workspace order without appearing in the label).
+fn deriveTitle(path: []const u8) []const u8 {
+    var base = std.fs.path.basename(path);
+    if (std.mem.lastIndexOfScalar(u8, base, '.')) |dot| base = base[0..dot];
+    var i: usize = 0;
+    while (i < base.len and std.ascii.isDigit(base[i])) i += 1;
+    if (i > 0 and i < base.len and (base[i] == '-' or base[i] == '_')) base = base[i + 1 ..];
+    return if (base.len == 0) "startpage" else base;
 }
 
 /// Converts parsed raw groups into `Group`s, resolving each link's `url`/`uri`.
@@ -130,33 +149,29 @@ fn normalizeGroups(arena: Allocator, path: []const u8, raw_groups: []const RawGr
     return groups;
 }
 
-/// Pure merge of already-parsed files (no I/O). Exposed for unit testing.
+/// Pure merge of already-parsed files (no I/O). Each file with at least one
+/// group becomes a workspace, in file order; `lang` is taken from the first
+/// file that sets it. Exposed for unit testing.
 fn combine(arena: Allocator, files: []const Parsed) MergeError!Config {
-    var title: []const u8 = "startpage";
-    var title_set = false;
     var lang: []const u8 = "en";
     var lang_set = false;
-    var groups: std.ArrayList(Group) = .empty;
+    var workspaces: std.ArrayList(Workspace) = .empty;
 
     for (files) |file| {
-        if (file.title) |t| {
-            if (!title_set) {
-                title = t;
-                title_set = true;
-            }
-        }
         if (file.lang) |l| {
             if (!lang_set) {
                 lang = l;
                 lang_set = true;
             }
         }
-        try groups.appendSlice(arena, file.groups);
+        // A file that contributes no groups (empty/comment-only) adds no page.
+        if (file.groups.len == 0) continue;
+        try workspaces.append(arena, .{ .title = file.title, .groups = file.groups });
     }
 
-    if (groups.items.len == 0) return error.NoGroups;
+    if (workspaces.items.len == 0) return error.NoGroups;
 
-    return .{ .title = title, .lang = lang, .groups = try groups.toOwnedSlice(arena) };
+    return .{ .lang = lang, .workspaces = try workspaces.toOwnedSlice(arena) };
 }
 
 // --- tests ---
@@ -167,49 +182,61 @@ fn oneLinkGroup(title: []const u8) Group {
     return .{ .title = title, .links = &.{.{ .name = "n", .url = "https://e" }} };
 }
 
-test "combine: title and lang come from the first file that sets them" {
+test "combine: each file with groups becomes a workspace, in file order" {
     var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
 
     const files = [_]Parsed{
-        .{ .groups = &.{oneLinkGroup("a")} }, // no title/lang
-        .{ .title = "second", .lang = "ja", .groups = &.{oneLinkGroup("b")} },
-        .{ .title = "third", .lang = "de" }, // ignored: already set
+        .{ .title = "work", .groups = &.{ oneLinkGroup("a"), oneLinkGroup("b") } },
+        .{ .title = "home", .groups = &.{oneLinkGroup("c")} },
     };
     const cfg = try combine(arena, &files);
-    try testing.expectEqualStrings("second", cfg.title);
+    try testing.expectEqual(@as(usize, 2), cfg.workspaces.len);
+    try testing.expectEqualStrings("work", cfg.workspaces[0].title);
+    try testing.expectEqual(@as(usize, 2), cfg.workspaces[0].groups.len);
+    try testing.expectEqualStrings("home", cfg.workspaces[1].title);
+    try testing.expectEqualStrings("c", cfg.workspaces[1].groups[0].title);
+}
+
+test "combine: lang comes from the first file that sets it" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const files = [_]Parsed{
+        .{ .title = "a", .groups = &.{oneLinkGroup("a")} }, // no lang
+        .{ .title = "b", .lang = "ja", .groups = &.{oneLinkGroup("b")} },
+        .{ .title = "c", .lang = "de", .groups = &.{oneLinkGroup("c")} }, // ignored
+    };
+    const cfg = try combine(arena, &files);
     try testing.expectEqualStrings("ja", cfg.lang);
+    try testing.expectEqual(@as(usize, 3), cfg.workspaces.len);
 }
 
-test "combine: groups concatenate in file order" {
+test "combine: files without groups add no workspace; NoGroups when none do" {
     var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
 
-    const files = [_]Parsed{
-        .{ .groups = &.{ oneLinkGroup("a"), oneLinkGroup("b") } },
-        .{ .groups = &.{oneLinkGroup("c")} },
+    const mixed = [_]Parsed{
+        .{ .title = "empty" }, // no groups: contributes no page
+        .{ .title = "real", .groups = &.{oneLinkGroup("only")} },
     };
-    const cfg = try combine(arena, &files);
-    try testing.expectEqual(@as(usize, 3), cfg.groups.len);
-    try testing.expectEqualStrings("a", cfg.groups[0].title);
-    try testing.expectEqualStrings("b", cfg.groups[1].title);
-    try testing.expectEqualStrings("c", cfg.groups[2].title);
+    const cfg = try combine(arena, &mixed);
+    try testing.expectEqualStrings("en", cfg.lang);
+    try testing.expectEqual(@as(usize, 1), cfg.workspaces.len);
+    try testing.expectEqualStrings("real", cfg.workspaces[0].title);
+
+    const none = [_]Parsed{.{ .title = "t" }};
+    try testing.expectError(error.NoGroups, combine(arena, &none));
 }
 
-test "combine: defaults apply and NoGroups is returned when nothing contributes groups" {
-    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena_state.deinit();
-    const arena = arena_state.allocator();
-
-    const with_groups = [_]Parsed{.{ .groups = &.{oneLinkGroup("only")} }};
-    const cfg = try combine(arena, &with_groups);
-    try testing.expectEqualStrings("startpage", cfg.title);
-    try testing.expectEqualStrings("en", cfg.lang);
-
-    const no_groups = [_]Parsed{.{ .title = "t" }}; // title but no groups
-    try testing.expectError(error.NoGroups, combine(arena, &no_groups));
+test deriveTitle {
+    try testing.expectEqualStrings("personal", deriveTitle("personal.yaml"));
+    try testing.expectEqualStrings("startale", deriveTitle("examples/workspaces/00-startale.yaml"));
+    try testing.expectEqualStrings("home_2", deriveTitle("home_2.yml")); // no leading digits: nothing stripped
+    try testing.expectEqualStrings("work", deriveTitle("10_work.yaml"));
 }
 
 test "normalizeGroups: uri is accepted as an alias for url" {

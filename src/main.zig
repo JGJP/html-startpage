@@ -40,9 +40,16 @@ const usage =
     \\from Unsplash at view time (the only thing the generated file fetches). Use
     \\--no-background for a plain black page with no external requests.
     \\
+    \\Workspaces: each input file is a separate workspace (a switchable page of
+    \\links); on the page, the left/right arrow keys move between them. A directory
+    \\argument is expanded to the *.yaml/*.yml files it contains, sorted by name, so
+    \\dropping a new file into it adds a workspace. A leading order prefix in the
+    \\file name (e.g. 01-work.yaml) sets the order without showing in the label.
+    \\
     \\Config schema (per file):
-    \\  title: my home                 # optional; taken from the first file that sets it
-    \\  lang: en                       # optional; document language (default "en")
+    \\  title: my home                 # optional; the workspace label (default: file name)
+    \\  lang: en                       # optional; document language (default "en"),
+    \\                                 # taken from the first file that sets it
     \\  groups:
     \\    - title: dev                 # required per group
     \\      links:
@@ -50,8 +57,6 @@ const usage =
     \\          url: https://github.com  # required
     \\          icon: https://.../x.png  # optional; image URL/data:/path used as-is,
     \\                                   # or a glyph like "▶". Skips favicon fetch.
-    \\
-    \\Groups from every file are concatenated in the order given.
     \\
 ;
 
@@ -109,7 +114,15 @@ fn run(init: std.process.Init) !void {
         return error.Reported;
     }
 
-    const cfg = try config.load(gpa, arena, io, inputs.items);
+    // Expand directory arguments into their sorted *.yaml/*.yml files, so each
+    // resulting file is picked up as its own workspace.
+    const files = try collectInputs(arena, io, inputs.items);
+    if (files.len == 0) {
+        std.log.err("no .yaml/.yml files found in the given input(s)", .{});
+        return error.Reported;
+    }
+
+    const cfg = try config.load(gpa, arena, io, files);
 
     var favicons: favicon.Result = .{};
     if (fetch_favicons) favicons = favicon.resolve(gpa, arena, io, cfg);
@@ -133,7 +146,7 @@ fn run(init: std.process.Init) !void {
     // next build. Non-fatal: a file we can't rewrite just isn't cached.
     var cached: usize = 0;
     if (fetch_favicons and cache_icons) {
-        for (inputs.items) |path| {
+        for (files) |path| {
             cached += writeback.cacheIcons(gpa, io, path, &favicons) catch |err| {
                 std.log.warn("could not cache icons into '{s}': {s}", .{ path, @errorName(err) });
                 continue;
@@ -142,10 +155,61 @@ fn run(init: std.process.Init) !void {
     }
 
     // Success summary on stdout (stdout is otherwise unused when writing a file).
-    const summary = try std.fmt.allocPrint(arena, "startpage: wrote {s} — {d} group(s), {d} link(s), {d} favicon(s), {d} bytes; cached {d} icon(s) into source\n", .{
-        output, cfg.groups.len, countLinks(cfg), favicons.styles.len, html.len, cached,
+    const summary = try std.fmt.allocPrint(arena, "startpage: wrote {s} — {d} workspace(s), {d} group(s), {d} link(s), {d} favicon(s), {d} bytes; cached {d} icon(s) into source\n", .{
+        output, cfg.workspaces.len, countGroups(cfg), countLinks(cfg), favicons.styles.len, html.len, cached,
     });
     try writeStdout(io, summary);
+}
+
+/// Expands each input path: a directory yields its `*.yaml`/`*.yml` files sorted
+/// by name (each becomes a workspace); anything else is passed through as-is.
+fn collectInputs(arena: std.mem.Allocator, io: std.Io, args: []const []const u8) ![]const []const u8 {
+    var out: std.ArrayList([]const u8) = .empty;
+    const cwd = std.Io.Dir.cwd();
+
+    for (args) |arg| {
+        const stat = cwd.statFile(io, arg, .{}) catch {
+            try out.append(arena, arg); // let the later read report a clear error
+            continue;
+        };
+        if (stat.kind != .directory) {
+            try out.append(arena, arg);
+            continue;
+        }
+
+        var dir = cwd.openDir(io, arg, .{ .iterate = true }) catch |err| {
+            std.log.err("cannot open directory '{s}': {s}", .{ arg, @errorName(err) });
+            return error.Reported;
+        };
+        defer dir.close(io);
+
+        const start = out.items.len;
+        var it = dir.iterate();
+        while (try it.next(io)) |entry| {
+            if (entry.kind == .directory) continue;
+            if (!hasYamlExt(entry.name)) continue;
+            const path = try std.fs.path.join(arena, &.{ arg, entry.name });
+            try out.append(arena, path);
+        }
+        // Directory order is unspecified; sort so workspace order is stable.
+        std.mem.sort([]const u8, out.items[start..], {}, lessThanStr);
+    }
+
+    return out.toOwnedSlice(arena);
+}
+
+fn hasYamlExt(name: []const u8) bool {
+    return std.ascii.endsWithIgnoreCase(name, ".yaml") or std.ascii.endsWithIgnoreCase(name, ".yml");
+}
+
+fn lessThanStr(_: void, a: []const u8, b: []const u8) bool {
+    return std.mem.lessThan(u8, a, b);
+}
+
+fn countGroups(cfg: config.Config) usize {
+    var n: usize = 0;
+    for (cfg.workspaces) |ws| n += ws.groups.len;
+    return n;
 }
 
 fn writeStdout(io: std.Io, bytes: []const u8) !void {
@@ -154,6 +218,8 @@ fn writeStdout(io: std.Io, bytes: []const u8) !void {
 
 fn countLinks(cfg: config.Config) usize {
     var n: usize = 0;
-    for (cfg.groups) |g| n += g.links.len;
+    for (cfg.workspaces) |ws| {
+        for (ws.groups) |g| n += g.links.len;
+    }
     return n;
 }

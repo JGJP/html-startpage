@@ -54,6 +54,7 @@ const css =
     \\  z-index: -1;
     \\}
     \\.page {
+    \\  display: none;
     \\  width: fit-content;
     \\  margin: 0 0 0 auto;
     \\  min-height: 100vh;
@@ -61,7 +62,11 @@ const css =
     \\  padding: clamp(30px, 7vw, 72px) clamp(22px, 5vw, 40px);
     \\  padding-right: clamp(36px, 6vw, 60px);
     \\}
+    \\.page.active { display: block; }
     \\.masthead { margin: 0 0 2.4rem; }
+    \\.ws { display: flex; gap: 6px; margin-top: 0.7rem; }
+    \\.ws .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); opacity: 0.35; }
+    \\.ws .dot.on { background: var(--accent); opacity: 1; }
     \\.masthead h1 {
     \\  margin: 0;
     \\  font-size: 0.8rem;
@@ -131,6 +136,8 @@ const css =
 ;
 
 pub fn render(w: *Writer, cfg: Config, favicons: ?*const favicon.Result, with_background: bool) Writer.Error!void {
+    const doc_title = if (cfg.workspaces.len > 0) cfg.workspaces[0].title else "startpage";
+
     try w.writeAll("<!DOCTYPE html>\n<html lang=\"");
     try writeEscaped(w, cfg.lang);
     try w.writeAll(
@@ -143,7 +150,7 @@ pub fn render(w: *Writer, cfg: Config, favicons: ?*const favicon.Result, with_ba
     );
     try w.writeAll(page_icon);
     try w.writeAll("<title>");
-    try writeEscaped(w, cfg.title);
+    try writeEscaped(w, doc_title);
     try w.writeAll("</title>\n<style>\n");
     try w.writeAll(css);
     if (favicons) |fav| {
@@ -161,37 +168,59 @@ pub fn render(w: *Writer, cfg: Config, favicons: ?*const favicon.Result, with_ba
 
     if (with_background) try w.writeAll("<div class=\"bg\" id=\"bg\"></div>\n");
 
-    try w.writeAll("<main class=\"page\">\n<header class=\"masthead\"><h1>");
-    try writeEscaped(w, cfg.title);
-    try w.writeAll("</h1></header>\n");
+    // Each workspace is its own page; only the active one is shown (left/right
+    // arrows switch between them, wired up in the script). The first is active
+    // so the page still works with scripting disabled.
+    for (cfg.workspaces, 0..) |ws, wi| {
+        try w.writeAll(if (wi == 0) "<main class=\"page active\">\n" else "<main class=\"page\">\n");
+        try w.writeAll("<header class=\"masthead\"><h1>");
+        try writeEscaped(w, ws.title);
+        try w.writeAll("</h1>");
+        try writeWorkspaceNav(w, wi, cfg.workspaces.len);
+        try w.writeAll("</header>\n");
 
-    for (cfg.groups) |group| {
-        if (group.links.len == 0) continue; // no orphan headings
-        try w.writeAll("<section class=\"group\">\n<h2>");
-        try writeEscaped(w, group.title);
-        try w.writeAll("</h2>\n<ul>\n");
-        for (group.links) |link| {
-            try w.writeAll("<li><a href=\"");
-            try writeEscaped(w, link.url);
-            try w.writeAll("\">");
-            try writeSlot(w, link, favicons);
-            try w.writeAll("<span class=\"name\">");
-            try writeEscaped(w, link.name);
-            try w.writeAll("</span></a></li>\n");
+        for (ws.groups) |group| {
+            if (group.links.len == 0) continue; // no orphan headings
+            try w.writeAll("<section class=\"group\">\n<h2>");
+            try writeEscaped(w, group.title);
+            try w.writeAll("</h2>\n<ul>\n");
+            for (group.links) |link| {
+                try w.writeAll("<li><a href=\"");
+                try writeEscaped(w, link.url);
+                try w.writeAll("\">");
+                try writeSlot(w, link, favicons);
+                try w.writeAll("<span class=\"name\">");
+                try writeEscaped(w, link.name);
+                try w.writeAll("</span></a></li>\n");
+            }
+            try w.writeAll("</ul>\n</section>\n");
         }
-        try w.writeAll("</ul>\n</section>\n");
+
+        try w.writeAll("</main>\n");
     }
 
-    try w.writeAll("</main>\n");
     try w.writeAll("<div class=\"compose\" id=\"compose\"></div>\n");
     try writeScript(w, with_background);
     try w.writeAll("</body>\n</html>\n");
 }
 
+/// A row of dots marking this workspace's position among `count` (with the
+/// current one filled). Emits nothing for a single workspace.
+fn writeWorkspaceNav(w: *Writer, active: usize, count: usize) Writer.Error!void {
+    if (count < 2) return;
+    try w.writeAll("<nav class=\"ws\" title=\"← → switch workspace\">");
+    for (0..count) |j| {
+        try w.writeAll(if (j == active) "<span class=\"dot on\"></span>" else "<span class=\"dot\"></span>");
+    }
+    try w.writeAll("</nav>");
+}
+
 /// Emits the page's client-side script: (optionally) a random background chosen
-/// on load, plus keyboard navigation. Typing pops a centered compose box; Tab
-/// transfers the query into the link filter, where up/down move the highlight,
-/// Enter opens it, and Esc/Backspace edit or dismiss the query.
+/// on load, workspace switching (left/right arrows swap the visible page), plus
+/// keyboard navigation. Typing pops a centered compose box; Tab transfers the
+/// query into the link filter, where up/down move the highlight, Enter opens it,
+/// and Esc/Backspace edit or dismiss the query. The filter is scoped to the
+/// active workspace and rebinds when the workspace changes.
 fn writeScript(w: *Writer, with_background: bool) Writer.Error!void {
     try w.writeAll("<script>\n(function(){\n");
 
@@ -207,19 +236,21 @@ fn writeScript(w: *Writer, with_background: bool) Writer.Error!void {
     }
 
     try w.writeAll(
-        \\var A=[].slice.call(document.querySelectorAll(".group a"));
-        \\A.forEach(function(a){a._n=(a.querySelector(".name")||a).textContent.toLowerCase();});
-        \\var G=[].slice.call(document.querySelectorAll(".group"));
-        \\var mh=document.querySelector(".masthead h1"),title=mh?mh.textContent:"";
+        \\var pages=[].slice.call(document.querySelectorAll(".page"));
+        \\pages.forEach(function(p){var h=p.querySelector(".masthead h1");p._t=h?h.textContent:"";});
         \\var box=document.getElementById("compose");
-        \\var page=document.querySelector(".page");if(page)page.style.minWidth=page.getBoundingClientRect().width+"px";
-        \\var q="",c="",composing=false,filtering=false,vis=A.slice(),i=-1;
+        \\var cur=0,A,G,mh,title,q="",c="",composing=false,filtering=false,vis=[],i=-1;
+        \\function bind(){var p=pages[cur];A=[].slice.call(p.querySelectorAll(".group a"));A.forEach(function(a){a._n=(a.querySelector(".name")||a).textContent.toLowerCase();});G=[].slice.call(p.querySelectorAll(".group"));mh=p.querySelector(".masthead h1");title=p._t;}
         \\function highlight(){A.forEach(function(a){a.classList.remove("active");});if(i>=0&&vis[i]){vis[i].classList.add("active");vis[i].scrollIntoView({block:"nearest"});}}
         \\function filter(){var ql=q.toLowerCase();vis=[];A.forEach(function(a){var s=a._n.indexOf(ql)!==-1;a.parentNode.style.display=s?"":"none";if(s)vis.push(a);});G.forEach(function(g){var any=[].slice.call(g.querySelectorAll("a")).some(function(a){return a.parentNode.style.display!=="none";});g.style.display=any?"":"none";});if(mh){mh.textContent=q||title;mh.classList.toggle("filtering",!!q);}i=(q&&vis.length)?0:-1;highlight();}
         \\function drawCompose(){box.textContent=c;box.classList.toggle("show",composing);}
         \\function reset(){q="";c="";composing=false;filtering=false;box.classList.remove("show");filter();}
+        \\function show(n){pages[cur].classList.remove("active");cur=(n%pages.length+pages.length)%pages.length;var p=pages[cur];p.classList.add("active");if(!p.style.minWidth)p.style.minWidth=p.getBoundingClientRect().width+"px";bind();reset();}
+        \\show(0);
         \\document.addEventListener("keydown",function(e){
         \\if(e.metaKey||e.ctrlKey||e.altKey)return;
+        \\if(e.key==="ArrowLeft"&&pages.length>1){e.preventDefault();show(cur-1);return;}
+        \\if(e.key==="ArrowRight"&&pages.length>1){e.preventDefault();show(cur+1);return;}
         \\if(filtering){
         \\if(e.key==="ArrowDown"){e.preventDefault();if(vis.length){i=i<0?0:(i+1)%vis.length;highlight();}}
         \\else if(e.key==="ArrowUp"){e.preventDefault();if(vis.length){i=i<0?vis.length-1:(i-1+vis.length)%vis.length;highlight();}}
@@ -305,17 +336,20 @@ test writeEscaped {
     try testing.expectEqualStrings("a&lt;b&gt;&amp;&quot;&#39;&quot;x", buf.written());
 }
 
+fn oneWorkspace(title: []const u8, groups: []const config.Group) config.Workspace {
+    return .{ .title = title, .groups = groups };
+}
+
 test "render: single column, escaping, lang, skips empty groups (no background)" {
     const cfg = Config{
-        .title = "my <home>",
         .lang = "ja",
-        .groups = &.{
+        .workspaces = &.{oneWorkspace("my <home>", &.{
             .{ .title = "dev", .links = &.{
                 .{ .name = "gh", .url = "https://github.com" },
                 .{ .name = "x\"y", .url = "https://e.com/?a=1&b=2", .icon = "▶" },
             } },
             .{ .title = "empty", .links = &.{} }, // must be skipped
-        },
+        })},
     };
     var buf: Writer.Allocating = .init(testing.allocator);
     defer buf.deinit();
@@ -329,17 +363,46 @@ test "render: single column, escaping, lang, skips empty groups (no background)"
     try testing.expect(std.mem.indexOf(u8, out, "addEventListener(\"keydown\"") != null);
     try testing.expect(std.mem.indexOf(u8, out, "images.unsplash.com") == null);
     try testing.expect(std.mem.indexOf(u8, out, "<div class=\"bg\"") == null);
+    // the single workspace title is both the <title> and the masthead
+    try testing.expect(std.mem.indexOf(u8, out, "<title>my &lt;home&gt;</title>") != null);
     try testing.expect(std.mem.indexOf(u8, out, "my &lt;home&gt;") != null);
     try testing.expect(std.mem.indexOf(u8, out, "a=1&amp;b=2") != null);
     try testing.expect(std.mem.indexOf(u8, out, "x&quot;y") != null);
     try testing.expect(std.mem.indexOf(u8, out, "▶") != null);
     try testing.expect(std.mem.indexOf(u8, out, ">empty<") == null);
+    // one workspace: page is active, but no workspace-switch dots are shown
+    try testing.expect(std.mem.indexOf(u8, out, "<main class=\"page active\">") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "class=\"ws\"") == null);
+}
+
+test "render: multiple workspaces each get a page, only the first is active, with nav dots" {
+    const cfg = Config{ .workspaces = &.{
+        oneWorkspace("startale", &.{.{ .title = "g", .links = &.{.{ .name = "a", .url = "https://a.com" }} }}),
+        oneWorkspace("personal", &.{.{ .title = "h", .links = &.{.{ .name = "b", .url = "https://b.com" }} }}),
+    } };
+    var buf: Writer.Allocating = .init(testing.allocator);
+    defer buf.deinit();
+    try render(&buf.writer, cfg, null, false);
+    const out = buf.written();
+
+    // first page active, second inactive; <title> is the first workspace
+    try testing.expect(std.mem.indexOf(u8, out, "<title>startale</title>") != null);
+    try testing.expectEqual(@as(usize, 1), std.mem.count(u8, out, "<main class=\"page active\">"));
+    try testing.expectEqual(@as(usize, 1), std.mem.count(u8, out, "<main class=\"page\">"));
+    try testing.expect(std.mem.indexOf(u8, out, ">startale</h1>") != null);
+    try testing.expect(std.mem.indexOf(u8, out, ">personal</h1>") != null);
+    // a dot row per page, each marking its own position
+    try testing.expectEqual(@as(usize, 2), std.mem.count(u8, out, "<nav class=\"ws\""));
+    try testing.expectEqual(@as(usize, 2), std.mem.count(u8, out, "<span class=\"dot on\">"));
+    // arrow switching is wired up
+    try testing.expect(std.mem.indexOf(u8, out, "ArrowLeft") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "ArrowRight") != null);
 }
 
 test "render: background adds one photo layer + a load-time (non-rotating) script" {
-    const cfg = Config{ .groups = &.{
+    const cfg = Config{ .workspaces = &.{oneWorkspace("w", &.{
         .{ .title = "g", .links = &.{.{ .name = "e", .url = "https://e.com" }} },
-    } };
+    })} };
     var buf: Writer.Allocating = .init(testing.allocator);
     defer buf.deinit();
     try render(&buf.writer, cfg, null, true);
@@ -361,9 +424,9 @@ test "render embeds fetched favicons as deduped CSS-class icons" {
         .index_of = index_of,
     };
 
-    const cfg = Config{ .groups = &.{
+    const cfg = Config{ .workspaces = &.{oneWorkspace("w", &.{
         .{ .title = "g", .links = &.{.{ .name = "e", .url = "https://e.com" }} },
-    } };
+    })} };
     var buf: Writer.Allocating = .init(testing.allocator);
     defer buf.deinit();
     try render(&buf.writer, cfg, &result, false);
@@ -374,13 +437,13 @@ test "render embeds fetched favicons as deduped CSS-class icons" {
 }
 
 test "render: image icon: is used directly; a symbol is a glyph" {
-    const cfg = Config{ .groups = &.{
+    const cfg = Config{ .workspaces = &.{oneWorkspace("w", &.{
         .{ .title = "g", .links = &.{
             .{ .name = "custom", .url = "https://e.com", .icon = "https://cdn.x/i.png" },
             .{ .name = "inline", .url = "https://f.com", .icon = "data:image/svg+xml,AAA" },
             .{ .name = "glyph", .url = "https://g.com", .icon = "★" },
         } },
-    } };
+    })} };
     var buf: Writer.Allocating = .init(testing.allocator);
     defer buf.deinit();
     try render(&buf.writer, cfg, null, false);

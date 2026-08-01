@@ -49,18 +49,20 @@ pub fn resolve(gpa: Allocator, arena: Allocator, io: std.Io, cfg: config.Config)
     defer uri_index.deinit(gpa);
     var index_of: StringMap(usize) = .empty;
 
-    for (cfg.groups) |group| {
-        for (group.links) |link| {
-            if (link.icon != null) continue; // explicit glyph overrides the favicon
-            const uri = hostFavicon(gpa, arena, &client, &by_host, link.url) orelse continue;
+    for (cfg.workspaces) |ws| {
+        for (ws.groups) |group| {
+            for (group.links) |link| {
+                if (link.icon != null) continue; // explicit glyph overrides the favicon
+                const uri = hostFavicon(gpa, arena, &client, &by_host, link.url) orelse continue;
 
-            const idx = uri_index.get(uri) orelse blk: {
-                const i = styles.items.len;
-                styles.append(arena, uri) catch continue;
-                uri_index.put(gpa, uri, i) catch {};
-                break :blk i;
-            };
-            index_of.put(arena, link.url, idx) catch {};
+                const idx = uri_index.get(uri) orelse blk: {
+                    const i = styles.items.len;
+                    styles.append(arena, uri) catch continue;
+                    uri_index.put(gpa, uri, i) catch {};
+                    break :blk i;
+                };
+                index_of.put(arena, link.url, idx) catch {};
+            }
         }
     }
 
