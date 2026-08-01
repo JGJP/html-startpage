@@ -17,11 +17,11 @@ when installed (falling back to the system monospace stack).
         │ home              │
         │                   │
         │ REPOS             │
-        │  github         │   ← favicons baked inline
-        │  gitlab         │     (dark-mode variant on black)
+        │  github           │   ← favicons baked inline
+        │  gitlab           │     (dark-mode variant on black)
         │                   │
         │ MEDIA             │
-        │  youtube         │
+        │  youtube          │
         └───────────────────┘
          single scrollable column, on black
 ```
