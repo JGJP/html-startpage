@@ -163,6 +163,13 @@ A workspace's title is its `title:` field, or — if absent — its file name (m
 the extension and any order prefix). The document `lang` is taken from the first
 file that sets it; the browser tab title is the first workspace's title.
 
+Keep your own workspaces in the git-ignored `config/` directory (the committed
+`examples/` are only generic demos) and generate from it:
+
+```sh
+startpage config/ -o ~/startpage.html
+```
+
 ## Project layout
 
 ```
@@ -175,6 +182,7 @@ src/
   render.zig         HTML/CSS generation, workspace switching, escaping
 examples/
   workspaces/        sample workspaces (one file each, arrow keys switch)
+config/              your real workspaces (git-ignored; not committed)
 vendor/zig-yaml/     vendored YAML parser (see vendor/zig-yaml/VENDOR.md)
 ```
 
