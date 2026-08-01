@@ -40,12 +40,16 @@ zig build test            # run unit tests, then build & open startpage.html in 
 ## Usage
 
 ```sh
-startpage [options] <config.yaml | dir> [more ...]
+startpage [options] [<config.yaml | dir> ...]
 ```
 
 Each file is a **workspace** (a switchable page); a directory argument is expanded
 to the sorted `*.yaml`/`*.yml` files it contains, so dropping a new file into it
 adds a workspace. See [Workspaces](#workspaces).
+
+**With no path given**, it reads `config/` (your real workspaces), falling back to
+`examples/workspaces/` when `config/` has no `.yaml` files — so plain `startpage`
+(or `zig build run`) just works.
 
 | Option | Description |
 | --- | --- |
@@ -164,10 +168,12 @@ the extension and any order prefix). The document `lang` is taken from the first
 file that sets it; the browser tab title is the first workspace's title.
 
 Keep your own workspaces in the git-ignored `config/` directory (the committed
-`examples/` are only generic demos) and generate from it:
+`examples/` are only generic demos). Because `config/` is the default input, you
+can generate from it with no path at all:
 
 ```sh
-startpage config/ -o ~/startpage.html
+startpage -o ~/startpage.html          # reads config/ (or examples/ if empty)
+startpage config/ -o ~/startpage.html  # the same, explicit
 ```
 
 ## Project layout

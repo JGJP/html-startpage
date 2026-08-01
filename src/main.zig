@@ -19,7 +19,10 @@ const usage =
     \\startpage — generate a single self-contained HTML startpage from YAML.
     \\
     \\Usage:
-    \\  startpage [options] <config.yaml> [more.yaml ...]
+    \\  startpage [options] [<config.yaml | dir> ...]
+    \\
+    \\With no path given, reads config/ (your real workspaces), falling back to
+    \\examples/workspaces/ when config/ has no .yaml files.
     \\
     \\Options:
     \\  -o, --output <file>   Write HTML to <file> (default: startpage.html).
@@ -109,9 +112,15 @@ fn run(init: std.process.Init) !void {
         }
     }
 
+    // With no path given, default to config/ (your real workspaces), falling
+    // back to examples/workspaces/ when config/ has no config files.
     if (inputs.items.len == 0) {
-        try writeStdout(io, usage);
-        return error.Reported;
+        const def = defaultInput(io) orelse {
+            try writeStdout(io, usage);
+            std.log.err("no input given, and neither config/ nor examples/workspaces/ has any .yaml files", .{});
+            return error.Reported;
+        };
+        try inputs.append(arena, def);
     }
 
     // Expand directory arguments into their sorted *.yaml/*.yml files, so each
@@ -159,6 +168,24 @@ fn run(init: std.process.Init) !void {
         output, cfg.workspaces.len, countGroups(cfg), countLinks(cfg), favicons.styles.len, html.len, cached,
     });
     try writeStdout(io, summary);
+}
+
+/// The directory used when no path is given: `config/` if it holds any config
+/// files, otherwise `examples/workspaces/`, otherwise null (nothing to render).
+fn defaultInput(io: std.Io) ?[]const u8 {
+    if (dirHasYaml(io, "config")) return "config";
+    if (dirHasYaml(io, "examples/workspaces")) return "examples/workspaces";
+    return null;
+}
+
+fn dirHasYaml(io: std.Io, path: []const u8) bool {
+    var dir = std.Io.Dir.cwd().openDir(io, path, .{ .iterate = true }) catch return false;
+    defer dir.close(io);
+    var it = dir.iterate();
+    while (it.next(io) catch return false) |entry| {
+        if (entry.kind != .directory and hasYamlExt(entry.name)) return true;
+    }
+    return false;
 }
 
 /// Expands each input path: a directory yields its `*.yaml`/`*.yml` files sorted
