@@ -33,7 +33,7 @@ Requires **Zig 0.16.0**.
 ```sh
 zig build                 # builds ./zig-out/bin/startpage
 zig build run -- config.yaml -o startpage.html
-zig build example         # renders examples/workspaces/ to zig-out/startpage.html
+zig build example         # renders config/ (else examples/workspaces/) to zig-out/startpage.html
 zig build test            # run unit tests, then build & open startpage.html in your browser
 ```
 
