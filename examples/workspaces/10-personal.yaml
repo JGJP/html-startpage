@@ -1,0 +1,36 @@
+title: personal
+
+groups:
+  - title: daily
+    links:
+      - name: gmail
+        url: https://mail.google.com/
+      - name: calendar
+        url: https://calendar.google.com/
+      - name: photos
+        url: https://photos.google.com/
+      - name: maps
+        url: https://maps.google.com/
+
+  - title: media
+    links:
+      - name: youtube
+        url: https://youtube.com
+      - name: spotify
+        url: https://open.spotify.com
+      - name: netflix
+        url: https://netflix.com
+
+  - title: social
+    links:
+      - name: github
+        url: https://github.com
+      - name: reddit
+        url: https://reddit.com
+      - name: hacker news
+        url: https://news.ycombinator.com
+
+  - title: shopping
+    links:
+      - name: amazon
+        url: https://amazon.co.jp

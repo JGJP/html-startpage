@@ -35,13 +35,14 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Build and run the startpage generator");
     run_step.dependOn(&run_cmd.step);
 
-    // zig build example -> render the bundled example to zig-out/startpage.html
+    // zig build example -> render the bundled example workspaces to
+    // zig-out/startpage.html (each file under examples/workspaces is a workspace).
     const example_cmd = b.addRunArtifact(exe);
-    example_cmd.addFileArg(b.path("examples/startpage.yaml"));
+    example_cmd.addDirectoryArg(b.path("examples/workspaces"));
     example_cmd.addArg("-o");
     const example_out = example_cmd.addOutputFileArg("startpage.html");
     const install_example = b.addInstallFileWithDir(example_out, .prefix, "startpage.html");
-    const example_step = b.step("example", "Generate zig-out/startpage.html from examples/startpage.yaml");
+    const example_step = b.step("example", "Generate zig-out/startpage.html from examples/workspaces");
     example_step.dependOn(&install_example.step);
 
     // zig build test -> run unit tests, then generate and open startpage.html
