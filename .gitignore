@@ -1,0 +1,6 @@
+.zig-cache/
+zig-out/
+.playwright-mcp/
+*.png
+*.html
+!examples/*.html
