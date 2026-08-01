@@ -7,3 +7,6 @@ zig-out/
 
 # your real (private) workspace configs — never committed
 /config/
+
+# local Claude Code config/skills — not committed
+/.claude/
