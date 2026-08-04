@@ -41,6 +41,10 @@ pub fn build(b: *std.Build) void {
     const input_dir: []const u8 = if (hasYaml(b.graph.io, b.build_root.handle, "config")) "config" else "examples/workspaces";
     const example_cmd = b.addRunArtifact(exe);
     example_cmd.addDirectoryArg(b.path(input_dir));
+    // A directory arg only hashes the path, not its contents, so editing a
+    // config yaml would otherwise replay a stale cached run. Register each yaml
+    // as an explicit file input so a content change invalidates the run.
+    addYamlInputs(b, example_cmd, input_dir);
     example_cmd.addArg("-o");
     const example_out = example_cmd.addOutputFileArg("startpage.html");
     const install_example = b.addInstallFileWithDir(example_out, .prefix, "startpage.html");
@@ -67,6 +71,21 @@ pub fn build(b: *std.Build) void {
     // zig build test-only -> run unit tests without generating/opening the page
     const test_only_step = b.step("test-only", "Run unit tests only (no browser)");
     test_only_step.dependOn(&run_unit_tests.step);
+}
+
+/// Register every top-level `*.yaml`/`*.yml` under `sub` as a cache input on
+/// `run`, so editing a config file invalidates the cached run (a directory arg
+/// alone only hashes the path).
+fn addYamlInputs(b: *std.Build, run: *std.Build.Step.Run, sub: []const u8) void {
+    var dir = b.build_root.handle.openDir(b.graph.io, sub, .{ .iterate = true }) catch return;
+    defer dir.close(b.graph.io);
+    var it = dir.iterate();
+    while (it.next(b.graph.io) catch return) |entry| {
+        if (entry.kind == .directory) continue;
+        if (std.mem.endsWith(u8, entry.name, ".yaml") or std.mem.endsWith(u8, entry.name, ".yml")) {
+            run.addFileInput(b.path(b.pathJoin(&.{ sub, entry.name })));
+        }
+    }
 }
 
 /// True if `sub` is a directory (relative to the build root) containing at least
