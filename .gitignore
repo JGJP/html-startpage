@@ -10,3 +10,4 @@ zig-out/
 
 # local Claude Code config/skills — not committed
 /.claude/
+.backup/
