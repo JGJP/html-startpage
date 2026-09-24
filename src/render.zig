@@ -220,8 +220,10 @@ fn writeWorkspaceNav(w: *Writer, active: usize, count: usize) Writer.Error!void 
 /// keyboard navigation. Typing pops a centered compose box; Tab transfers the
 /// query into the link filter, where up/down move the highlight, Enter opens it,
 /// and Esc/Backspace edit or dismiss the query. The filter is scoped to the
-/// active workspace; switching workspaces keeps an active filter and re-applies
-/// it to the new page (highlighting its first match).
+/// active workspace, but on Tab a query that matches nothing there falls through
+/// to the other workspaces, switching to the first one with a match; switching
+/// workspaces keeps an active filter and re-applies it (highlighting its first
+/// match).
 fn writeScript(w: *Writer, with_background: bool) Writer.Error!void {
     try w.writeAll("<script>\n(function(){\n");
 
@@ -244,6 +246,8 @@ fn writeScript(w: *Writer, with_background: bool) Writer.Error!void {
         \\function bind(){var p=pages[cur];A=[].slice.call(p.querySelectorAll(".group a"));A.forEach(function(a){a._n=(a.querySelector(".name")||a).textContent.toLowerCase();});G=[].slice.call(p.querySelectorAll(".group"));mh=p.querySelector(".masthead h1");title=p._t;}
         \\function highlight(){A.forEach(function(a){a.classList.remove("active");});if(i>=0&&vis[i]){vis[i].classList.add("active");vis[i].scrollIntoView({block:"nearest"});}}
         \\function filter(){var ql=q.toLowerCase();vis=[];A.forEach(function(a){var s=a._n.indexOf(ql)!==-1;a.parentNode.style.display=s?"":"none";if(s)vis.push(a);});G.forEach(function(g){var any=[].slice.call(g.querySelectorAll("a")).some(function(a){return a.parentNode.style.display!=="none";});g.style.display=any?"":"none";});if(mh){mh.textContent=q||title;mh.classList.toggle("filtering",!!q);}i=(q&&vis.length)?0:-1;highlight();}
+        \\function pageMatches(p,ql){return [].slice.call(p.querySelectorAll(".group a")).some(function(a){return (a._n||(a._n=(a.querySelector(".name")||a).textContent.toLowerCase())).indexOf(ql)!==-1;});}
+        \\function filterAcross(){filter();if(q&&!vis.length&&pages.length>1){var ql=q.toLowerCase();for(var k=1;k<pages.length;k++){var n=(cur+k)%pages.length;if(pageMatches(pages[n],ql)){show(n);break;}}}}
         \\function drawCompose(){box.textContent=c;box.classList.toggle("show",composing);}
         \\function reset(){q="";c="";composing=false;filtering=false;box.classList.remove("show");filter();}
         \\function show(n){pages[cur].classList.remove("active");cur=(n%pages.length+pages.length)%pages.length;var p=pages[cur];p.classList.add("active");if(!p.style.minWidth)p.style.minWidth=p.getBoundingClientRect().width+"px";bind();c="";composing=false;box.classList.remove("show");filter();}
@@ -262,7 +266,7 @@ fn writeScript(w: *Writer, with_background: bool) Writer.Error!void {
         \\return;
         \\}
         \\if(e.key==="Enter"){if(composing&&c){e.preventDefault();location.href="https://www.google.com/search?q="+encodeURIComponent(c);}return;}
-        \\if(e.key==="Tab"){e.preventDefault();q=c;c="";composing=false;box.classList.remove("show");filtering=true;filter();return;}
+        \\if(e.key==="Tab"){e.preventDefault();q=c;c="";composing=false;box.classList.remove("show");filtering=true;filterAcross();return;}
         \\if(e.key==="Escape"){if(composing){e.preventDefault();composing=false;c="";drawCompose();}return;}
         \\if(e.key==="Backspace"){if(composing){e.preventDefault();c=c.slice(0,-1);if(!c)composing=false;drawCompose();}return;}
         \\if(e.key.length===1){e.preventDefault();composing=true;c+=e.key;drawCompose();}
