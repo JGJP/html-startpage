@@ -351,7 +351,7 @@ fn writeClocks(w: *Writer, clocks: []const config.Clock) Writer.Error!void {
         \\var CEL=document.getElementById("clocks"),NOW=12,hovCol=-1,MARKS={},WBASE=0,dragging=false,dStart=0,dEnd=0,dAdd=true;
         \\try{JSON.parse(localStorage.getItem("startpage.clockMarks")||"[]").forEach(function(k){MARKS[k]=1;});}catch(e){}
         \\function saveMarks(){var a=[];for(var k in MARKS)if(MARKS[k])a.push(+k);try{localStorage.setItem("startpage.clockMarks",JSON.stringify(a));}catch(e){}}
-        \\function inw(h,s,e){return s<=e?(h>=s&&h<e):(h>=s||h<e);}
+        \\function inw(h,s,e){return s<=e?(h>=s&&h<=e):(h>=s||h<=e);}
         \\function ukOf(col){return new Date(WBASE+col*3600000).getUTCHours();}
         \\function colOf(e){var c=e.target.closest?e.target.closest(".clk-cell"):null;return c?+c.getAttribute("data-c"):-1;}
         \\function preview(){showBand(Math.min(dStart,dEnd),Math.max(dStart,dEnd),!dAdd);}

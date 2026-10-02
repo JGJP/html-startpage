@@ -113,8 +113,9 @@ outside each city's working hours are dimmed, day changes are marked). Rows are
 ordered by UTC offset
 (easternmost first). Each clock needs a `tz` (an IANA time-zone name; `timezone`
 is accepted as an alias) and takes an optional `label` (defaulting to the zone
-name) and optional `work` hours as a 24-hour `START-END` range (default `9-17`):
-when a city's **current** time is outside its working hours, its row turns red.
+name) and optional `work` hours as an inclusive 24-hour `START-END` range
+(default `9-17`, so `9-22` lights up hours 9 through 22): when a city's
+**current** time is outside its working hours, its row turns red.
 Like `lang`, the strip is taken from the first file that defines one; it is shared
 across all workspaces. All time math runs client-side, so zones track DST.
 

@@ -25,7 +25,8 @@ pub const Group = struct {
 /// One city in the world-clock strip at the foot of the page. `tz` is an IANA
 /// time-zone name (e.g. `Asia/Tokyo`); the clock itself is computed client-side,
 /// so this carries only the zone, its display `label`, and the local working
-/// hours `[work_start, work_end)` used to flag the city when it's off the clock.
+/// hours `work_start..=work_end` (inclusive) used to shade the timeline and flag
+/// the city when it's off the clock.
 pub const Clock = struct {
     tz: []const u8,
     label: []const u8,
