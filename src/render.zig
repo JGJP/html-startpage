@@ -32,6 +32,7 @@ const css =
     \\  --fg: #e7e7ec;
     \\  --muted: #9a9aa8;
     \\  --accent: #8be9c8;
+    \\  --off: #ff6b6b;
     \\  --mono: "Berkeley Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
     \\}
     \\* { box-sizing: border-box; }
@@ -148,7 +149,9 @@ const css =
     \\.clk-row { display: flex; align-items: center; gap: 12px; margin: 3px 0; white-space: nowrap; }
     \\.clk-label { display: flex; align-items: baseline; gap: 8px; width: 170px; min-width: 170px; }
     \\.clk-city { color: var(--fg); letter-spacing: 0.05em; }
+    \\.clk-city.off { color: var(--off); }
     \\.clk-now { color: var(--accent); font-variant-numeric: tabular-nums; }
+    \\.clk-now.off { color: var(--off); }
     \\.clk-zone { margin-left: auto; color: var(--muted); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; }
     \\.clk-cells { display: flex; }
     \\.clk-cell {
@@ -165,6 +168,7 @@ const css =
     \\.clk-cell.day { box-shadow: inset 2px 0 0 var(--accent); color: var(--accent); }
     \\.clk-cell.mark { background: rgba(139,233,200,0.28); color: var(--fg); box-shadow: inset 0 0 0 1px var(--accent); }
     \\.clk-cell.cur { background: var(--accent); color: #000; }
+    \\.clk-cell.cur.off { background: var(--off); }
     \\.clk-band { position: absolute; pointer-events: none; z-index: 2; display: none; border: 1px solid var(--accent); border-radius: 3px; box-shadow: 0 0 0 1px rgba(0,0,0,0.5); }
     \\@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
     \\
@@ -337,25 +341,26 @@ fn writeClocks(w: *Writer, clocks: []const config.Clock) Writer.Error!void {
         try writeJsString(w, clock.tz);
         try w.writeAll("\",label:\"");
         try writeJsString(w, clock.label);
-        try w.writeAll("\"}");
+        try w.print("\",ws:{d},we:{d}}}", .{ clock.work_start, clock.work_end });
     }
     try w.writeAll(
         \\];
-        \\var CEL=document.getElementById("clocks"),NOW=12,hovCol=-1,WBASE=0,MARKS={};
+        \\var CEL=document.getElementById("clocks"),NOW=12,hovCol=-1,MARKS={};
         \\try{JSON.parse(localStorage.getItem("startpage.clockMarks")||"[]").forEach(function(k){MARKS[k]=1;});}catch(e){}
-        \\function saveMarks(){var a=[];for(var k in MARKS)if(MARKS[k]&&+k>=WBASE)a.push(+k);MARKS={};a.forEach(function(k){MARKS[k]=1;});try{localStorage.setItem("startpage.clockMarks",JSON.stringify(a));}catch(e){}}
+        \\function saveMarks(){var a=[];for(var k in MARKS)if(MARKS[k])a.push(+k);try{localStorage.setItem("startpage.clockMarks",JSON.stringify(a));}catch(e){}}
+        \\function inw(h,s,e){return s<=e?(h>=s&&h<e):(h>=s||h<e);}
         \\function pz(d,tz){var o={};new Intl.DateTimeFormat("en-US",{timeZone:tz,hourCycle:"h23",hour:"2-digit",minute:"2-digit",weekday:"short",day:"2-digit",month:"short",timeZoneName:"short"}).formatToParts(d).forEach(function(p){o[p.type]=p.value;});return o;}
         \\function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
         \\function off(tz,d){var o={};new Intl.DateTimeFormat("en-US",{timeZone:tz,hourCycle:"h23",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"}).formatToParts(d).forEach(function(p){o[p.type]=p.value;});return (Date.UTC(o.year,o.month-1,o.day,o.hour,o.minute,o.second)-d.getTime())/60000;}
         \\function band(col){var b=document.getElementById("clkband");if(!b)return;var cells=col<0?[]:CEL.querySelectorAll('.clk-cell[data-c="'+col+'"]');if(!cells.length){b.style.display="none";return;}var o=CEL.getBoundingClientRect(),f=cells[0].getBoundingClientRect(),l=cells[cells.length-1].getBoundingClientRect();b.style.display="block";b.style.left=(f.left-o.left)+"px";b.style.top=(f.top-o.top)+"px";b.style.width=f.width+"px";b.style.height=(l.bottom-f.top)+"px";}
         \\function drawClocks(){
-        \\var now=new Date();var base=new Date(now.getTime());base.setMinutes(0,0,0);base=new Date(base.getTime()-NOW*3600000);WBASE=base.getTime();var h='<div class="clk-band" id="clkband"></div>';
+        \\var now=new Date();var base=new Date(now.getTime());base.setMinutes(0,0,0);base=new Date(base.getTime()-NOW*3600000);var h='<div class="clk-band" id="clkband"></div>';
         \\var order=CK.slice().sort(function(a,b){return off(b.tz,now)-off(a.tz,now);});
-        \\for(var r=0;r<order.length;r++){var c=order[r],p=pz(now,c.tz),cells="";
-        \\for(var j=0;j<24;j++){var ms=base.getTime()+j*3600000,hp=pz(new Date(ms),c.tz),hr=+hp.hour;
-        \\var cls="clk-cell"+((hr<7||hr>=19)?" night":"")+(hr===0?" day":"")+(MARKS[ms]?" mark":"")+(j===NOW?" cur":"");
-        \\cells+='<span class="'+cls+'" data-c="'+j+'" data-k="'+ms+'" title="'+esc(hp.weekday+" "+hp.day+" "+hp.month)+'">'+(hr===0?hp.day:hp.hour)+'</span>';}
-        \\h+='<div class="clk-row"><div class="clk-label"><span class="clk-city">'+esc(c.label)+'</span><span class="clk-now">'+p.hour+':'+p.minute+'</span><span class="clk-zone">'+esc(p.weekday+" "+(p.timeZoneName||""))+'</span></div><div class="clk-cells">'+cells+'</div></div>';}
+        \\for(var r=0;r<order.length;r++){var c=order[r],p=pz(now,c.tz),od=!inw(+p.hour,c.ws,c.we),cells="";
+        \\for(var j=0;j<24;j++){var ms=base.getTime()+j*3600000,uk=new Date(ms).getUTCHours(),hp=pz(new Date(ms),c.tz),hr=+hp.hour;
+        \\var cls="clk-cell"+((hr<7||hr>=19)?" night":"")+(hr===0?" day":"")+(MARKS[uk]?" mark":"")+(j===NOW?(od?" cur off":" cur"):"");
+        \\cells+='<span class="'+cls+'" data-c="'+j+'" data-k="'+uk+'" title="'+esc(hp.weekday+" "+hp.day+" "+hp.month)+'">'+(hr===0?hp.day:hp.hour)+'</span>';}
+        \\h+='<div class="clk-row"><div class="clk-label"><span class="clk-city'+(od?" off":"")+'">'+esc(c.label)+'</span><span class="clk-now'+(od?" off":"")+'">'+p.hour+':'+p.minute+'</span><span class="clk-zone">'+esc(p.weekday+" "+(p.timeZoneName||""))+'</span></div><div class="clk-cells">'+cells+'</div></div>';}
         \\CEL.innerHTML=h;band(hovCol);}
         \\CEL.addEventListener("mousemove",function(e){var c=e.target.closest?e.target.closest(".clk-cell"):null;var n=c?+c.getAttribute("data-c"):-1;if(n!==hovCol){hovCol=n;band(hovCol);}});
         \\CEL.addEventListener("mouseleave",function(){hovCol=-1;band(-1);});
@@ -561,7 +566,7 @@ test "render: world-clock strip emits a data row per city, escaped and script-sa
         })},
         .clocks = &.{
             .{ .tz = "America/Chicago", .label = "Austin" },
-            .{ .tz = "Asia/Tokyo", .label = "Tokyo" },
+            .{ .tz = "Asia/Tokyo", .label = "Tokyo", .work_start = 10, .work_end = 19 },
             .{ .tz = "Europe/Zagreb", .label = "</script>" }, // must be neutralized
         },
     };
@@ -571,8 +576,8 @@ test "render: world-clock strip emits a data row per city, escaped and script-sa
     const out = buf.written();
 
     try testing.expect(std.mem.indexOf(u8, out, "<div class=\"clocks\" id=\"clocks\"></div>") != null);
-    try testing.expect(std.mem.indexOf(u8, out, "{tz:\"America/Chicago\",label:\"Austin\"}") != null);
-    try testing.expect(std.mem.indexOf(u8, out, "{tz:\"Asia/Tokyo\",label:\"Tokyo\"}") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "{tz:\"America/Chicago\",label:\"Austin\",ws:9,we:17}") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "{tz:\"Asia/Tokyo\",label:\"Tokyo\",ws:10,we:19}") != null);
     try testing.expect(std.mem.indexOf(u8, out, "Intl.DateTimeFormat") != null);
     // the label can never close the script element early
     try testing.expect(std.mem.indexOf(u8, out, "label:\"</script>\"") == null);

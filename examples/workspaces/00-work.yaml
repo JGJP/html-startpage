@@ -3,10 +3,13 @@ title: work
 clocks:
   - tz: America/Chicago
     label: Austin
+    work: 9-17
   - tz: Asia/Tokyo
     label: Tokyo
+    work: 10-19
   - tz: Europe/Zagreb
     label: Zagreb
+    work: 9-17
 
 groups:
   - title: repos

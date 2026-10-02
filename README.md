@@ -107,22 +107,32 @@ example.
 
 A `clocks` list adds a [worldtimebuddy](https://worldtimebuddy.com)-style strip at
 the foot of the page: one row per city showing its current time and a 24-hour
-timeline whose columns line up to the same instant across rows, so you can read
-off what time it is everywhere at a glance (night hours are dimmed, day changes
-are marked). Each clock needs a `tz` (an IANA time-zone name; `timezone` is
-accepted as an alias) and an optional `label` (defaulting to the zone name). Like
-`lang`, the strip is taken from the first file that defines one; it is shared
+timeline centered on the current hour, whose columns line up to the same instant
+across rows, so you can read off what time it is everywhere at a glance (night
+hours are dimmed, day changes are marked). Rows are ordered by UTC offset
+(easternmost first). Each clock needs a `tz` (an IANA time-zone name; `timezone`
+is accepted as an alias) and takes an optional `label` (defaulting to the zone
+name) and optional `work` hours as a 24-hour `START-END` range (default `9-17`):
+when a city's **current** time is outside its working hours, its row turns red.
+Like `lang`, the strip is taken from the first file that defines one; it is shared
 across all workspaces. All time math runs client-side, so zones track DST.
 
 ```yaml
 clocks:
   - tz: America/Chicago
     label: Austin
+    work: 9-17
   - tz: Asia/Tokyo
     label: Tokyo
+    work: 10-19
   - tz: Europe/Zagreb
     label: Zagreb
+    work: 9-17
 ```
+
+Click any hour to mark it (and click again to unmark); marks recur daily — a
+marked hour stays highlighted every day and loops around as the window slides —
+and persist in `localStorage`.
 
 > **Block style only.** Use indented block syntax (as above). The vendored
 > parser does not support YAML flow style (`links: [{name: x, url: y}]`), and

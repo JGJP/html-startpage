@@ -24,10 +24,13 @@ pub const Group = struct {
 
 /// One city in the world-clock strip at the foot of the page. `tz` is an IANA
 /// time-zone name (e.g. `Asia/Tokyo`); the clock itself is computed client-side,
-/// so this carries only the zone and its display `label`.
+/// so this carries only the zone, its display `label`, and the local working
+/// hours `[work_start, work_end)` used to flag the city when it's off the clock.
 pub const Clock = struct {
     tz: []const u8,
     label: []const u8,
+    work_start: u8 = 9,
+    work_end: u8 = 17,
 };
 
 /// One switchable page of links, contributed by a single input file.
@@ -62,6 +65,8 @@ const RawClock = struct {
     /// Accepted as an alias for `tz`.
     timezone: ?[]const u8 = null,
     label: ?[]const u8 = null,
+    /// Local working hours as `"START-END"` on a 24-hour clock (e.g. `9-17`).
+    work: ?[]const u8 = null,
 };
 
 const FileConfig = struct {
@@ -168,8 +173,9 @@ fn normalizeGroups(arena: Allocator, path: []const u8, raw_groups: []const RawGr
     return groups;
 }
 
-/// Converts parsed raw clocks into `Clock`s, resolving each `tz`/`timezone` and
-/// defaulting a missing `label` to the zone name.
+/// Converts parsed raw clocks into `Clock`s, resolving each `tz`/`timezone`,
+/// defaulting a missing `label` to the zone name, and parsing optional `work`
+/// hours (defaulting to 9-17).
 fn normalizeClocks(arena: Allocator, path: []const u8, raw_clocks: []const RawClock) ![]const Clock {
     const clocks = try arena.alloc(Clock, raw_clocks.len);
     for (raw_clocks, 0..) |rc, i| {
@@ -177,9 +183,28 @@ fn normalizeClocks(arena: Allocator, path: []const u8, raw_clocks: []const RawCl
             std.log.err("'{s}': a clock has no 'tz' (or 'timezone')", .{path});
             return error.Reported;
         };
-        clocks[i] = .{ .tz = tz, .label = rc.label orelse tz };
+        var clock: Clock = .{ .tz = tz, .label = rc.label orelse tz };
+        if (rc.work) |work| try parseWork(path, work, &clock.work_start, &clock.work_end);
+        clocks[i] = clock;
     }
     return clocks;
+}
+
+/// Parses a `"START-END"` 24-hour range (e.g. `9-17`) into `start`/`end`.
+fn parseWork(path: []const u8, s: []const u8, start: *u8, end: *u8) !void {
+    const dash = std.mem.indexOfScalar(u8, s, '-');
+    const bad = struct {
+        fn err(p: []const u8, v: []const u8) error{Reported} {
+            std.log.err("'{s}': clock 'work' must be a 24-hour range like \"9-17\", got '{s}'", .{ p, v });
+            return error.Reported;
+        }
+    }.err;
+    const d = dash orelse return bad(path, s);
+    const lo = std.fmt.parseInt(u8, std.mem.trim(u8, s[0..d], " "), 10) catch return bad(path, s);
+    const hi = std.fmt.parseInt(u8, std.mem.trim(u8, s[d + 1 ..], " "), 10) catch return bad(path, s);
+    if (lo > 24 or hi > 24) return bad(path, s);
+    start.* = lo;
+    end.* = hi;
 }
 
 /// Pure merge of already-parsed files (no I/O). Each file with at least one
@@ -304,6 +329,19 @@ test "normalizeClocks: timezone is an alias for tz; label defaults to the zone" 
     try testing.expectEqualStrings("Austin", clocks[0].label);
     try testing.expectEqualStrings("Europe/Zagreb", clocks[1].tz);
     try testing.expectEqualStrings("Europe/Zagreb", clocks[1].label); // defaulted
+    try testing.expectEqual(@as(u8, 9), clocks[0].work_start); // defaulted
+    try testing.expectEqual(@as(u8, 17), clocks[0].work_end);
+}
+
+test "normalizeClocks: work parses a (whitespace-tolerant) 24-hour range" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const ok = [_]RawClock{.{ .tz = "Asia/Tokyo", .work = " 10 - 19 " }};
+    const clocks = try normalizeClocks(arena, "<test>", &ok);
+    try testing.expectEqual(@as(u8, 10), clocks[0].work_start);
+    try testing.expectEqual(@as(u8, 19), clocks[0].work_end);
 }
 
 test "normalizeGroups: uri is accepted as an alias for url" {
