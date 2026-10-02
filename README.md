@@ -130,7 +130,8 @@ clocks:
     work: 9-17
 ```
 
-Click any hour to mark it (and click again to unmark); marks recur daily — a
+Click any hour to mark it, or click and drag across a span to mark several at
+once (dragging from a marked hour erases the span instead); marks recur daily — a
 marked hour stays highlighted every day and loops around as the window slides —
 and persist in `localStorage`.
 
