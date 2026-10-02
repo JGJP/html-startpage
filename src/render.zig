@@ -140,7 +140,7 @@ const css =
     \\  padding: 12px 16px 14px;
     \\  font-size: 0.7rem;
     \\  line-height: 1.3;
-    \\  background: linear-gradient(to top, rgba(0,0,0,0.88), rgba(0,0,0,0.78) 60%, rgba(0,0,0,0));
+    \\  background: rgba(0,0,0,0.85);
     \\  max-width: 100vw;
     \\  overflow-x: auto;
     \\  cursor: pointer;
