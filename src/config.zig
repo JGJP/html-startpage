@@ -22,6 +22,14 @@ pub const Group = struct {
     links: []const Link,
 };
 
+/// One city in the world-clock strip at the foot of the page. `tz` is an IANA
+/// time-zone name (e.g. `Asia/Tokyo`); the clock itself is computed client-side,
+/// so this carries only the zone and its display `label`.
+pub const Clock = struct {
+    tz: []const u8,
+    label: []const u8,
+};
+
 /// One switchable page of links, contributed by a single input file.
 pub const Workspace = struct {
     title: []const u8,
@@ -31,6 +39,7 @@ pub const Workspace = struct {
 pub const Config = struct {
     lang: []const u8 = "en",
     workspaces: []const Workspace = &.{},
+    clocks: []const Clock = &.{},
 };
 
 // --- YAML parse shapes (all optional so files may contribute only some parts) ---
@@ -48,10 +57,18 @@ const RawGroup = struct {
     links: []const RawLink,
 };
 
+const RawClock = struct {
+    tz: ?[]const u8 = null,
+    /// Accepted as an alias for `tz`.
+    timezone: ?[]const u8 = null,
+    label: ?[]const u8 = null,
+};
+
 const FileConfig = struct {
     title: ?[]const u8 = null,
     lang: ?[]const u8 = null,
     groups: ?[]const RawGroup = null,
+    clocks: ?[]const RawClock = null,
 };
 
 /// One file's contribution after `uri`/`url` normalization. `title` is already
@@ -60,6 +77,7 @@ const Parsed = struct {
     title: []const u8,
     lang: ?[]const u8 = null,
     groups: []const Group = &.{},
+    clocks: []const Clock = &.{},
 };
 
 const MergeError = error{NoGroups} || Allocator.Error;
@@ -108,6 +126,7 @@ pub fn load(gpa: Allocator, arena: Allocator, io: std.Io, paths: []const []const
             .title = fc.title orelse deriveTitle(path),
             .lang = fc.lang,
             .groups = try normalizeGroups(arena, path, fc.groups orelse &.{}),
+            .clocks = try normalizeClocks(arena, path, fc.clocks orelse &.{}),
         });
     }
 
@@ -149,12 +168,27 @@ fn normalizeGroups(arena: Allocator, path: []const u8, raw_groups: []const RawGr
     return groups;
 }
 
+/// Converts parsed raw clocks into `Clock`s, resolving each `tz`/`timezone` and
+/// defaulting a missing `label` to the zone name.
+fn normalizeClocks(arena: Allocator, path: []const u8, raw_clocks: []const RawClock) ![]const Clock {
+    const clocks = try arena.alloc(Clock, raw_clocks.len);
+    for (raw_clocks, 0..) |rc, i| {
+        const tz = rc.tz orelse rc.timezone orelse {
+            std.log.err("'{s}': a clock has no 'tz' (or 'timezone')", .{path});
+            return error.Reported;
+        };
+        clocks[i] = .{ .tz = tz, .label = rc.label orelse tz };
+    }
+    return clocks;
+}
+
 /// Pure merge of already-parsed files (no I/O). Each file with at least one
-/// group becomes a workspace, in file order; `lang` is taken from the first
-/// file that sets it. Exposed for unit testing.
+/// group becomes a workspace, in file order; `lang` and the world-clock strip
+/// are each taken from the first file that sets them. Exposed for unit testing.
 fn combine(arena: Allocator, files: []const Parsed) MergeError!Config {
     var lang: []const u8 = "en";
     var lang_set = false;
+    var clocks: []const Clock = &.{};
     var workspaces: std.ArrayList(Workspace) = .empty;
 
     for (files) |file| {
@@ -164,6 +198,7 @@ fn combine(arena: Allocator, files: []const Parsed) MergeError!Config {
                 lang_set = true;
             }
         }
+        if (clocks.len == 0 and file.clocks.len > 0) clocks = file.clocks;
         // A file that contributes no groups (empty/comment-only) adds no page.
         if (file.groups.len == 0) continue;
         try workspaces.append(arena, .{ .title = file.title, .groups = file.groups });
@@ -171,7 +206,7 @@ fn combine(arena: Allocator, files: []const Parsed) MergeError!Config {
 
     if (workspaces.items.len == 0) return error.NoGroups;
 
-    return .{ .lang = lang, .workspaces = try workspaces.toOwnedSlice(arena) };
+    return .{ .lang = lang, .workspaces = try workspaces.toOwnedSlice(arena), .clocks = clocks };
 }
 
 // --- tests ---
@@ -237,6 +272,38 @@ test deriveTitle {
     try testing.expectEqualStrings("startale", deriveTitle("examples/workspaces/00-startale.yaml"));
     try testing.expectEqualStrings("home_2", deriveTitle("home_2.yml")); // no leading digits: nothing stripped
     try testing.expectEqualStrings("work", deriveTitle("10_work.yaml"));
+}
+
+test "combine: clocks come from the first file that sets them" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const files = [_]Parsed{
+        .{ .title = "a", .groups = &.{oneLinkGroup("a")} }, // no clocks
+        .{ .title = "b", .groups = &.{oneLinkGroup("b")}, .clocks = &.{.{ .tz = "Asia/Tokyo", .label = "Tokyo" }} },
+        .{ .title = "c", .groups = &.{oneLinkGroup("c")}, .clocks = &.{.{ .tz = "Europe/Zagreb", .label = "Zagreb" }} }, // ignored
+    };
+    const cfg = try combine(arena, &files);
+    try testing.expectEqual(@as(usize, 1), cfg.clocks.len);
+    try testing.expectEqualStrings("Asia/Tokyo", cfg.clocks[0].tz);
+    try testing.expectEqualStrings("Tokyo", cfg.clocks[0].label);
+}
+
+test "normalizeClocks: timezone is an alias for tz; label defaults to the zone" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+
+    const raw = [_]RawClock{
+        .{ .tz = "America/Chicago", .label = "Austin" },
+        .{ .timezone = "Europe/Zagreb" },
+    };
+    const clocks = try normalizeClocks(arena, "<test>", &raw);
+    try testing.expectEqualStrings("America/Chicago", clocks[0].tz);
+    try testing.expectEqualStrings("Austin", clocks[0].label);
+    try testing.expectEqualStrings("Europe/Zagreb", clocks[1].tz);
+    try testing.expectEqualStrings("Europe/Zagreb", clocks[1].label); // defaulted
 }
 
 test "normalizeGroups: uri is accepted as an alias for url" {

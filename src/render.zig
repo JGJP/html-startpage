@@ -131,6 +131,38 @@ const css =
     \\}
     \\.compose.show { display: block; }
     \\.compose::after { content: "▏"; color: var(--accent); }
+    \\.clocks {
+    \\  position: fixed;
+    \\  left: 0;
+    \\  bottom: 0;
+    \\  z-index: 5;
+    \\  padding: 12px 16px 14px;
+    \\  font-size: 0.7rem;
+    \\  line-height: 1.3;
+    \\  background: linear-gradient(to top, rgba(0,0,0,0.88), rgba(0,0,0,0.78) 60%, rgba(0,0,0,0));
+    \\  max-width: 100vw;
+    \\  overflow-x: auto;
+    \\}
+    \\.clocks:empty { display: none; }
+    \\.clk-row { display: flex; align-items: center; gap: 12px; margin: 3px 0; white-space: nowrap; }
+    \\.clk-label { display: flex; align-items: baseline; gap: 8px; width: 170px; min-width: 170px; }
+    \\.clk-city { color: var(--fg); letter-spacing: 0.05em; }
+    \\.clk-now { color: var(--accent); font-variant-numeric: tabular-nums; }
+    \\.clk-zone { margin-left: auto; color: var(--muted); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; }
+    \\.clk-cells { display: flex; }
+    \\.clk-cell {
+    \\  width: 22px;
+    \\  min-width: 22px;
+    \\  text-align: center;
+    \\  padding: 3px 0;
+    \\  color: var(--fg);
+    \\  background: rgba(255,255,255,0.09);
+    \\  border-right: 1px solid rgba(0,0,0,0.45);
+    \\  font-variant-numeric: tabular-nums;
+    \\}
+    \\.clk-cell.night { background: rgba(255,255,255,0.02); color: var(--muted); }
+    \\.clk-cell.day { box-shadow: inset 2px 0 0 var(--accent); color: var(--accent); }
+    \\.clk-cell.cur { background: var(--accent); color: #000; }
     \\@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
     \\
 ;
@@ -199,8 +231,9 @@ pub fn render(w: *Writer, cfg: Config, favicons: ?*const favicon.Result, with_ba
         try w.writeAll("</main>\n");
     }
 
+    if (cfg.clocks.len > 0) try w.writeAll("<div class=\"clocks\" id=\"clocks\"></div>\n");
     try w.writeAll("<div class=\"compose\" id=\"compose\"></div>\n");
-    try writeScript(w, with_background);
+    try writeScript(w, with_background, cfg.clocks);
     try w.writeAll("</body>\n</html>\n");
 }
 
@@ -224,8 +257,10 @@ fn writeWorkspaceNav(w: *Writer, active: usize, count: usize) Writer.Error!void 
 /// to the other workspaces, switching to the first one with a match; switching
 /// workspaces keeps an active filter and re-applies it (highlighting its first
 /// match).
-fn writeScript(w: *Writer, with_background: bool) Writer.Error!void {
+fn writeScript(w: *Writer, with_background: bool, clocks: []const config.Clock) Writer.Error!void {
     try w.writeAll("<script>\n(function(){\n");
+
+    try writeClocks(w, clocks);
 
     if (with_background) {
         try w.writeAll("var I=[");
@@ -283,6 +318,42 @@ fn writeScript(w: *Writer, with_background: bool) Writer.Error!void {
     );
 }
 
+/// Emits the world-clock strip's data and renderer into the page script: a
+/// worldtimebuddy-style row per configured city with its current time and a
+/// 24-column timeline whose columns are the same absolute instant across rows
+/// (so you can read off what time it is everywhere at a glance). All time math
+/// is done client-side with `Intl.DateTimeFormat`, so zones track DST at view
+/// time. Emits nothing when no clocks are configured.
+fn writeClocks(w: *Writer, clocks: []const config.Clock) Writer.Error!void {
+    if (clocks.len == 0) return;
+
+    try w.writeAll("var CK=[");
+    for (clocks, 0..) |clock, i| {
+        if (i != 0) try w.writeAll(",");
+        try w.writeAll("{tz:\"");
+        try writeJsString(w, clock.tz);
+        try w.writeAll("\",label:\"");
+        try writeJsString(w, clock.label);
+        try w.writeAll("\"}");
+    }
+    try w.writeAll(
+        \\];
+        \\var CEL=document.getElementById("clocks");
+        \\function pz(d,tz){var o={};new Intl.DateTimeFormat("en-US",{timeZone:tz,hourCycle:"h23",hour:"2-digit",minute:"2-digit",weekday:"short",day:"2-digit",month:"short",timeZoneName:"short"}).formatToParts(d).forEach(function(p){o[p.type]=p.value;});return o;}
+        \\function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+        \\function drawClocks(){
+        \\var now=new Date();var base=new Date(now.getTime());base.setMinutes(0,0,0);var h="";
+        \\for(var r=0;r<CK.length;r++){var c=CK[r],p=pz(now,c.tz),cells="";
+        \\for(var j=0;j<24;j++){var hp=pz(new Date(base.getTime()+j*3600000),c.tz),hr=+hp.hour;
+        \\var cls="clk-cell"+((hr<7||hr>=19)?" night":"")+(hr===0?" day":"")+(j===0?" cur":"");
+        \\cells+='<span class="'+cls+'" title="'+esc(hp.weekday+" "+hp.day+" "+hp.month)+'">'+(hr===0?hp.day:hp.hour)+'</span>';}
+        \\h+='<div class="clk-row"><div class="clk-label"><span class="clk-city">'+esc(c.label)+'</span><span class="clk-now">'+p.hour+':'+p.minute+'</span><span class="clk-zone">'+esc(p.weekday+" "+(p.timeZoneName||""))+'</span></div><div class="clk-cells">'+cells+'</div></div>';}
+        \\CEL.innerHTML=h;}
+        \\drawClocks();setInterval(drawClocks,1000);
+        \\
+    );
+}
+
 /// Writes the leading icon slot. An explicit `icon:` wins (and is never fetched):
 /// an image reference is used directly as an <img>, anything else is a glyph.
 /// Otherwise, in favicon mode, the fetched favicon (or an empty, aligned slot).
@@ -316,6 +387,19 @@ fn isImageIcon(s: []const u8) bool {
         if (s.len >= ext.len and std.ascii.eqlIgnoreCase(s[s.len - ext.len ..], ext)) return true;
     }
     return false;
+}
+
+/// Escapes a string for embedding in a double-quoted JavaScript string literal.
+/// `<` becomes `\x3C` so a value can never spawn a `</script>` and break out.
+fn writeJsString(w: *Writer, s: []const u8) Writer.Error!void {
+    for (s) |c| switch (c) {
+        '\\' => try w.writeAll("\\\\"),
+        '"' => try w.writeAll("\\\""),
+        '<' => try w.writeAll("\\x3C"),
+        '\n' => try w.writeAll("\\n"),
+        '\r' => try w.writeAll("\\r"),
+        else => try w.writeByte(c),
+    };
 }
 
 /// Escapes text for both HTML element content and double-quoted attributes.
@@ -457,6 +541,44 @@ test "render: image icon: is used directly; a symbol is a glyph" {
     try testing.expect(std.mem.indexOf(u8, out, "<img class=\"favimg\" alt=\"\" src=\"https://cdn.x/i.png\">") != null);
     try testing.expect(std.mem.indexOf(u8, out, "src=\"data:image/svg+xml,AAA\">") != null);
     try testing.expect(std.mem.indexOf(u8, out, "<span class=\"slot glyph\">★</span>") != null);
+}
+
+test "render: world-clock strip emits a data row per city, escaped and script-safe" {
+    const cfg = Config{
+        .workspaces = &.{oneWorkspace("w", &.{
+            .{ .title = "g", .links = &.{.{ .name = "a", .url = "https://a.com" }} },
+        })},
+        .clocks = &.{
+            .{ .tz = "America/Chicago", .label = "Austin" },
+            .{ .tz = "Asia/Tokyo", .label = "Tokyo" },
+            .{ .tz = "Europe/Zagreb", .label = "</script>" }, // must be neutralized
+        },
+    };
+    var buf: Writer.Allocating = .init(testing.allocator);
+    defer buf.deinit();
+    try render(&buf.writer, cfg, null, false);
+    const out = buf.written();
+
+    try testing.expect(std.mem.indexOf(u8, out, "<div class=\"clocks\" id=\"clocks\"></div>") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "{tz:\"America/Chicago\",label:\"Austin\"}") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "{tz:\"Asia/Tokyo\",label:\"Tokyo\"}") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "Intl.DateTimeFormat") != null);
+    // the label can never close the script element early
+    try testing.expect(std.mem.indexOf(u8, out, "label:\"</script>\"") == null);
+    try testing.expect(std.mem.indexOf(u8, out, "label:\"\\x3C/script>\"") != null);
+}
+
+test "render: no clocks means no strip and no clock script" {
+    const cfg = Config{ .workspaces = &.{oneWorkspace("w", &.{
+        .{ .title = "g", .links = &.{.{ .name = "a", .url = "https://a.com" }} },
+    })} };
+    var buf: Writer.Allocating = .init(testing.allocator);
+    defer buf.deinit();
+    try render(&buf.writer, cfg, null, false);
+    const out = buf.written();
+
+    try testing.expect(std.mem.indexOf(u8, out, "class=\"clocks\"") == null);
+    try testing.expect(std.mem.indexOf(u8, out, "drawClocks") == null);
 }
 
 test isImageIcon {

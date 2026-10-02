@@ -73,7 +73,8 @@ startpage work.yaml personal.yaml         # two workspaces, arrow keys switch
 ## Config format
 
 Each file (workspace) may define an optional `title`, an optional `lang` (default
-`en`), and a list of `groups`. Every group has a `title` and a list of `links`;
+`en`), an optional `clocks` list (a world-clock strip; see below), and a list of
+`groups`. Every group has a `title` and a list of `links`;
 each link has a `name`, a `url` (`uri` is accepted as an alias), and an optional
 `icon`.
 The `icon` is either an **image reference** (URL, `data:` URI, or path) used
@@ -101,6 +102,27 @@ groups:
 
 See [`examples/workspaces/`](examples/workspaces/) for a fuller two-workspace
 example.
+
+### World clock
+
+A `clocks` list adds a [worldtimebuddy](https://worldtimebuddy.com)-style strip at
+the foot of the page: one row per city showing its current time and a 24-hour
+timeline whose columns line up to the same instant across rows, so you can read
+off what time it is everywhere at a glance (night hours are dimmed, day changes
+are marked). Each clock needs a `tz` (an IANA time-zone name; `timezone` is
+accepted as an alias) and an optional `label` (defaulting to the zone name). Like
+`lang`, the strip is taken from the first file that defines one; it is shared
+across all workspaces. All time math runs client-side, so zones track DST.
+
+```yaml
+clocks:
+  - tz: America/Chicago
+    label: Austin
+  - tz: Asia/Tokyo
+    label: Tokyo
+  - tz: Europe/Zagreb
+    label: Zagreb
+```
 
 > **Block style only.** Use indented block syntax (as above). The vendored
 > parser does not support YAML flow style (`links: [{name: x, url: y}]`), and

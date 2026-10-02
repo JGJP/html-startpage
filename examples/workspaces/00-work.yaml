@@ -1,5 +1,13 @@
 title: work
 
+clocks:
+  - tz: America/Chicago
+    label: Austin
+  - tz: Asia/Tokyo
+    label: Tokyo
+  - tz: Europe/Zagreb
+    label: Zagreb
+
 groups:
   - title: repos
     links:
