@@ -168,12 +168,11 @@ const css =
     \\}
     \\.clk-cell.night { background: rgba(255,255,255,0.02); color: var(--muted); }
     \\.clk-cell.day { box-shadow: inset 2px 0 0 var(--accent); color: var(--accent); }
-    \\.clk-cell.mark { background: rgba(139,233,200,0.28); color: var(--fg); box-shadow: inset 0 0 0 1px var(--accent); }
-    \\.clk-cell.sel { background: rgba(139,233,200,0.4); color: var(--fg); box-shadow: inset 0 0 0 1px var(--accent); }
-    \\.clk-cell.del { box-shadow: inset 0 0 0 1px var(--off); opacity: 0.55; }
     \\.clk-cell.cur { background: var(--accent); color: #000; }
     \\.clk-cell.cur.off { background: var(--off); }
     \\.clk-band { position: absolute; pointer-events: none; z-index: 2; display: none; border: 1px solid var(--accent); border-radius: 3px; box-shadow: 0 0 0 1px rgba(0,0,0,0.5); }
+    \\.clk-band.del { border-color: var(--off); }
+    \\.clk-mark { position: absolute; pointer-events: none; z-index: 1; display: none; border: 1px solid var(--accent); border-radius: 3px; background: rgba(139,233,200,0.14); box-shadow: 0 0 0 1px rgba(0,0,0,0.5); }
     \\@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
     \\
 ;
@@ -355,21 +354,24 @@ fn writeClocks(w: *Writer, clocks: []const config.Clock) Writer.Error!void {
         \\function inw(h,s,e){return s<=e?(h>=s&&h<e):(h>=s||h<e);}
         \\function ukOf(col){return new Date(WBASE+col*3600000).getUTCHours();}
         \\function colOf(e){var c=e.target.closest?e.target.closest(".clk-cell"):null;return c?+c.getAttribute("data-c"):-1;}
-        \\function preview(){var lo=Math.min(dStart,dEnd),hi=Math.max(dStart,dEnd),a=CEL.querySelectorAll(".clk-cell");for(var i=0;i<a.length;i++){var cc=+a[i].getAttribute("data-c"),on=cc>=lo&&cc<=hi;a[i].classList.toggle("sel",on&&dAdd);a[i].classList.toggle("del",on&&!dAdd);}}
+        \\function preview(){showBand(Math.min(dStart,dEnd),Math.max(dStart,dEnd),!dAdd);}
         \\function pz(d,tz){var o={};new Intl.DateTimeFormat("en-US",{timeZone:tz,hourCycle:"h23",hour:"2-digit",minute:"2-digit",weekday:"short",day:"2-digit",month:"short",timeZoneName:"short"}).formatToParts(d).forEach(function(p){o[p.type]=p.value;});return o;}
         \\function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
         \\function off(tz,d){var o={};new Intl.DateTimeFormat("en-US",{timeZone:tz,hourCycle:"h23",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"}).formatToParts(d).forEach(function(p){o[p.type]=p.value;});return (Date.UTC(o.year,o.month-1,o.day,o.hour,o.minute,o.second)-d.getTime())/60000;}
-        \\function band(col){var b=document.getElementById("clkband");if(!b)return;var cells=col<0?[]:CEL.querySelectorAll('.clk-cell[data-c="'+col+'"]');if(!cells.length){b.style.display="none";return;}var o=CEL.getBoundingClientRect(),f=cells[0].getBoundingClientRect(),l=cells[cells.length-1].getBoundingClientRect();b.style.display="block";b.style.left=(f.left-o.left)+"px";b.style.top=(f.top-o.top)+"px";b.style.width=f.width+"px";b.style.height=(l.bottom-f.top)+"px";}
+        \\function placeRect(el,lo,hi){var a=CEL.querySelectorAll('.clk-cell[data-c="'+lo+'"]'),b=CEL.querySelectorAll('.clk-cell[data-c="'+hi+'"]');if(!a.length||!b.length){el.style.display="none";return;}var o=CEL.getBoundingClientRect(),fa=a[0].getBoundingClientRect(),la=a[a.length-1].getBoundingClientRect(),fb=b[0].getBoundingClientRect();el.style.display="block";el.style.left=(fa.left-o.left)+"px";el.style.top=(fa.top-o.top)+"px";el.style.width=(fb.right-fa.left)+"px";el.style.height=(la.bottom-fa.top)+"px";}
+        \\function showBand(lo,hi,del){var b=document.getElementById("clkband");if(!b)return;if(lo<0){b.style.display="none";return;}b.classList.toggle("del",!!del);placeRect(b,lo,hi);}
+        \\function band(col){showBand(col,col,false);}
+        \\function drawMarks(){var cols=[];for(var j=0;j<24;j++)if(MARKS[ukOf(j)])cols.push(j);var i=0;while(i<cols.length){var lo=cols[i],hi=lo;while(i+1<cols.length&&cols[i+1]===hi+1){hi=cols[++i];}i++;var d=document.createElement("div");d.className="clk-mark";CEL.appendChild(d);placeRect(d,lo,hi);}}
         \\function drawClocks(){
         \\if(dragging)return;
         \\var now=new Date();var base=new Date(now.getTime());base.setMinutes(0,0,0);base=new Date(base.getTime()-NOW*3600000);WBASE=base.getTime();var h='<div class="clk-band" id="clkband"></div>';
         \\var order=CK.slice().sort(function(a,b){return off(b.tz,now)-off(a.tz,now);});
         \\for(var r=0;r<order.length;r++){var c=order[r],p=pz(now,c.tz),od=!inw(+p.hour,c.ws,c.we),cells="";
-        \\for(var j=0;j<24;j++){var ms=base.getTime()+j*3600000,uk=new Date(ms).getUTCHours(),hp=pz(new Date(ms),c.tz),hr=+hp.hour;
-        \\var cls="clk-cell"+((hr<7||hr>=19)?" night":"")+(hr===0?" day":"")+(MARKS[uk]?" mark":"")+(j===NOW?(od?" cur off":" cur"):"");
-        \\cells+='<span class="'+cls+'" data-c="'+j+'" data-k="'+uk+'" title="'+esc(hp.weekday+" "+hp.day+" "+hp.month)+'">'+(hr===0?hp.day:hp.hour)+'</span>';}
+        \\for(var j=0;j<24;j++){var ms=base.getTime()+j*3600000,hp=pz(new Date(ms),c.tz),hr=+hp.hour;
+        \\var cls="clk-cell"+((hr<7||hr>=19)?" night":"")+(hr===0?" day":"")+(j===NOW?(od?" cur off":" cur"):"");
+        \\cells+='<span class="'+cls+'" data-c="'+j+'" title="'+esc(hp.weekday+" "+hp.day+" "+hp.month)+'">'+(hr===0?hp.day:hp.hour)+'</span>';}
         \\h+='<div class="clk-row"><div class="clk-label"><span class="clk-city'+(od?" off":"")+'">'+esc(c.label)+'</span><span class="clk-now'+(od?" off":"")+'">'+p.hour+':'+p.minute+'</span><span class="clk-zone">'+esc(p.weekday+" "+(p.timeZoneName||""))+'</span></div><div class="clk-cells">'+cells+'</div></div>';}
-        \\CEL.innerHTML=h;band(hovCol);}
+        \\CEL.innerHTML=h;drawMarks();band(hovCol);}
         \\CEL.addEventListener("mousedown",function(e){var col=colOf(e);if(col<0)return;e.preventDefault();dragging=true;dStart=dEnd=col;dAdd=!MARKS[ukOf(col)];hovCol=-1;band(-1);preview();});
         \\CEL.addEventListener("mousemove",function(e){if(dragging){var col=colOf(e);if(col>=0&&col!==dEnd){dEnd=col;preview();}return;}var n=colOf(e);if(n!==hovCol){hovCol=n;band(hovCol);}});
         \\CEL.addEventListener("mouseleave",function(){if(!dragging){hovCol=-1;band(-1);}});
