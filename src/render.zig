@@ -342,10 +342,12 @@ fn writeClocks(w: *Writer, clocks: []const config.Clock) Writer.Error!void {
         \\var CEL=document.getElementById("clocks"),NOW=12,hovCol=-1;
         \\function pz(d,tz){var o={};new Intl.DateTimeFormat("en-US",{timeZone:tz,hourCycle:"h23",hour:"2-digit",minute:"2-digit",weekday:"short",day:"2-digit",month:"short",timeZoneName:"short"}).formatToParts(d).forEach(function(p){o[p.type]=p.value;});return o;}
         \\function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+        \\function off(tz,d){var o={};new Intl.DateTimeFormat("en-US",{timeZone:tz,hourCycle:"h23",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"}).formatToParts(d).forEach(function(p){o[p.type]=p.value;});return (Date.UTC(o.year,o.month-1,o.day,o.hour,o.minute,o.second)-d.getTime())/60000;}
         \\function band(col){var b=document.getElementById("clkband");if(!b)return;var cells=col<0?[]:CEL.querySelectorAll('.clk-cell[data-c="'+col+'"]');if(!cells.length){b.style.display="none";return;}var o=CEL.getBoundingClientRect(),f=cells[0].getBoundingClientRect(),l=cells[cells.length-1].getBoundingClientRect();b.style.display="block";b.style.left=(f.left-o.left)+"px";b.style.top=(f.top-o.top)+"px";b.style.width=f.width+"px";b.style.height=(l.bottom-f.top)+"px";}
         \\function drawClocks(){
         \\var now=new Date();var base=new Date(now.getTime());base.setMinutes(0,0,0);base=new Date(base.getTime()-NOW*3600000);var h='<div class="clk-band" id="clkband"></div>';
-        \\for(var r=0;r<CK.length;r++){var c=CK[r],p=pz(now,c.tz),cells="";
+        \\var order=CK.slice().sort(function(a,b){return off(b.tz,now)-off(a.tz,now);});
+        \\for(var r=0;r<order.length;r++){var c=order[r],p=pz(now,c.tz),cells="";
         \\for(var j=0;j<24;j++){var hp=pz(new Date(base.getTime()+j*3600000),c.tz),hr=+hp.hour;
         \\var cls="clk-cell"+((hr<7||hr>=19)?" night":"")+(hr===0?" day":"")+(j===NOW?" cur":"");
         \\cells+='<span class="'+cls+'" data-c="'+j+'" title="'+esc(hp.weekday+" "+hp.day+" "+hp.month)+'">'+(hr===0?hp.day:hp.hour)+'</span>';}
