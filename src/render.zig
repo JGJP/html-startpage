@@ -368,7 +368,7 @@ fn writeClocks(w: *Writer, clocks: []const config.Clock) Writer.Error!void {
         \\var order=CK.slice().sort(function(a,b){return off(b.tz,now)-off(a.tz,now);});
         \\for(var r=0;r<order.length;r++){var c=order[r],p=pz(now,c.tz),od=!inw(+p.hour,c.ws,c.we),cells="";
         \\for(var j=0;j<24;j++){var ms=base.getTime()+j*3600000,hp=pz(new Date(ms),c.tz),hr=+hp.hour;
-        \\var cls="clk-cell"+((hr<7||hr>=19)?" night":"")+(hr===0?" day":"")+(j===NOW?(od?" cur off":" cur"):"");
+        \\var cls="clk-cell"+(inw(hr,c.ws,c.we)?"":" night")+(hr===0?" day":"")+(j===NOW?(od?" cur off":" cur"):"");
         \\cells+='<span class="'+cls+'" data-c="'+j+'" title="'+esc(hp.weekday+" "+hp.day+" "+hp.month)+'">'+(hr===0?hp.day:hp.hour)+'</span>';}
         \\h+='<div class="clk-row"><div class="clk-label"><span class="clk-city'+(od?" off":"")+'">'+esc(c.label)+'</span><span class="clk-now'+(od?" off":"")+'">'+p.hour+':'+p.minute+'</span><span class="clk-zone">'+esc(p.weekday+" "+(p.timeZoneName||""))+'</span></div><div class="clk-cells">'+cells+'</div></div>';}
         \\CEL.innerHTML=h;drawMarks();band(hovCol);}

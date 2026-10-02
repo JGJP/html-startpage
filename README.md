@@ -108,8 +108,9 @@ example.
 A `clocks` list adds a [worldtimebuddy](https://worldtimebuddy.com)-style strip at
 the foot of the page: one row per city showing its current time and a 24-hour
 timeline centered on the current hour, whose columns line up to the same instant
-across rows, so you can read off what time it is everywhere at a glance (night
-hours are dimmed, day changes are marked). Rows are ordered by UTC offset
+across rows, so you can read off what time it is everywhere at a glance (hours
+outside each city's working hours are dimmed, day changes are marked). Rows are
+ordered by UTC offset
 (easternmost first). Each clock needs a `tz` (an IANA time-zone name; `timezone`
 is accepted as an alias) and takes an optional `label` (defaulting to the zone
 name) and optional `work` hours as a 24-hour `START-END` range (default `9-17`):
