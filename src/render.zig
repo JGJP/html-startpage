@@ -172,7 +172,7 @@ const css =
     \\.clk-cell.cur.off { background: var(--off); }
     \\.clk-band { position: absolute; pointer-events: none; z-index: 2; display: none; border: 1px solid var(--accent); border-radius: 3px; box-shadow: 0 0 0 1px rgba(0,0,0,0.5); }
     \\.clk-band.del { border-color: var(--off); }
-    \\.clk-mark { position: absolute; pointer-events: none; z-index: 1; display: none; border: 1px solid var(--accent); border-radius: 3px; background: rgba(139,233,200,0.14); box-shadow: 0 0 0 1px rgba(0,0,0,0.5); }
+    \\.clk-mark { position: absolute; pointer-events: none; z-index: 1; display: none; border: 1px solid var(--accent); border-radius: 3px; box-shadow: 0 0 0 1px rgba(0,0,0,0.5); }
     \\@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
     \\
 ;
