@@ -355,6 +355,7 @@ fn writeClocks(w: *Writer, clocks: []const config.Clock) Writer.Error!void {
         \\function ukOf(col){return new Date(WBASE+col*3600000).getUTCHours();}
         \\function colOf(e){var c=e.target.closest?e.target.closest(".clk-cell"):null;return c?+c.getAttribute("data-c"):-1;}
         \\function preview(){showBand(Math.min(dStart,dEnd),Math.max(dStart,dEnd),!dAdd);}
+        \\function removeRun(uk){var s=uk,n;for(n=0;n<24&&MARKS[(s+23)%24];n++)s=(s+23)%24;for(n=0;n<24&&MARKS[s];n++){delete MARKS[s];s=(s+1)%24;}}
         \\function pz(d,tz){var o={};new Intl.DateTimeFormat("en-US",{timeZone:tz,hourCycle:"h23",hour:"2-digit",minute:"2-digit",weekday:"short",day:"2-digit",month:"short",timeZoneName:"short"}).formatToParts(d).forEach(function(p){o[p.type]=p.value;});return o;}
         \\function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
         \\function off(tz,d){var o={};new Intl.DateTimeFormat("en-US",{timeZone:tz,hourCycle:"h23",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"}).formatToParts(d).forEach(function(p){o[p.type]=p.value;});return (Date.UTC(o.year,o.month-1,o.day,o.hour,o.minute,o.second)-d.getTime())/60000;}
@@ -375,7 +376,7 @@ fn writeClocks(w: *Writer, clocks: []const config.Clock) Writer.Error!void {
         \\CEL.addEventListener("mousedown",function(e){var col=colOf(e);if(col<0)return;e.preventDefault();dragging=true;dStart=dEnd=col;dAdd=!MARKS[ukOf(col)];hovCol=-1;band(-1);preview();});
         \\CEL.addEventListener("mousemove",function(e){if(dragging){var col=colOf(e);if(col>=0&&col!==dEnd){dEnd=col;preview();}return;}var n=colOf(e);if(n!==hovCol){hovCol=n;band(hovCol);}});
         \\CEL.addEventListener("mouseleave",function(){if(!dragging){hovCol=-1;band(-1);}});
-        \\document.addEventListener("mouseup",function(){if(!dragging)return;dragging=false;var lo=Math.min(dStart,dEnd),hi=Math.max(dStart,dEnd);for(var col=lo;col<=hi;col++){var k=ukOf(col);if(dAdd)MARKS[k]=1;else delete MARKS[k];}saveMarks();drawClocks();});
+        \\document.addEventListener("mouseup",function(){if(!dragging)return;dragging=false;var lo=Math.min(dStart,dEnd),hi=Math.max(dStart,dEnd);if(lo===hi&&!dAdd)removeRun(ukOf(lo));else for(var col=lo;col<=hi;col++){var k=ukOf(col);if(dAdd)MARKS[k]=1;else delete MARKS[k];}saveMarks();drawClocks();});
         \\drawClocks();setInterval(drawClocks,1000);
         \\
     );
