@@ -142,6 +142,7 @@ const css =
     \\  background: linear-gradient(to top, rgba(0,0,0,0.88), rgba(0,0,0,0.78) 60%, rgba(0,0,0,0));
     \\  max-width: 100vw;
     \\  overflow-x: auto;
+    \\  cursor: default;
     \\}
     \\.clocks:empty { display: none; }
     \\.clk-row { display: flex; align-items: center; gap: 12px; margin: 3px 0; white-space: nowrap; }
