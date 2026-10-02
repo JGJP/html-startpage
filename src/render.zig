@@ -142,7 +142,7 @@ const css =
     \\  background: linear-gradient(to top, rgba(0,0,0,0.88), rgba(0,0,0,0.78) 60%, rgba(0,0,0,0));
     \\  max-width: 100vw;
     \\  overflow-x: auto;
-    \\  cursor: default;
+    \\  cursor: pointer;
     \\}
     \\.clocks:empty { display: none; }
     \\.clk-row { display: flex; align-items: center; gap: 12px; margin: 3px 0; white-space: nowrap; }
@@ -163,6 +163,7 @@ const css =
     \\}
     \\.clk-cell.night { background: rgba(255,255,255,0.02); color: var(--muted); }
     \\.clk-cell.day { box-shadow: inset 2px 0 0 var(--accent); color: var(--accent); }
+    \\.clk-cell.mark { background: rgba(139,233,200,0.28); color: var(--fg); box-shadow: inset 0 0 0 1px var(--accent); }
     \\.clk-cell.cur { background: var(--accent); color: #000; }
     \\.clk-band { position: absolute; pointer-events: none; z-index: 2; display: none; border: 1px solid var(--accent); border-radius: 3px; box-shadow: 0 0 0 1px rgba(0,0,0,0.5); }
     \\@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -340,22 +341,25 @@ fn writeClocks(w: *Writer, clocks: []const config.Clock) Writer.Error!void {
     }
     try w.writeAll(
         \\];
-        \\var CEL=document.getElementById("clocks"),NOW=12,hovCol=-1;
+        \\var CEL=document.getElementById("clocks"),NOW=12,hovCol=-1,WBASE=0,MARKS={};
+        \\try{JSON.parse(localStorage.getItem("startpage.clockMarks")||"[]").forEach(function(k){MARKS[k]=1;});}catch(e){}
+        \\function saveMarks(){var a=[];for(var k in MARKS)if(MARKS[k]&&+k>=WBASE)a.push(+k);MARKS={};a.forEach(function(k){MARKS[k]=1;});try{localStorage.setItem("startpage.clockMarks",JSON.stringify(a));}catch(e){}}
         \\function pz(d,tz){var o={};new Intl.DateTimeFormat("en-US",{timeZone:tz,hourCycle:"h23",hour:"2-digit",minute:"2-digit",weekday:"short",day:"2-digit",month:"short",timeZoneName:"short"}).formatToParts(d).forEach(function(p){o[p.type]=p.value;});return o;}
         \\function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
         \\function off(tz,d){var o={};new Intl.DateTimeFormat("en-US",{timeZone:tz,hourCycle:"h23",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"}).formatToParts(d).forEach(function(p){o[p.type]=p.value;});return (Date.UTC(o.year,o.month-1,o.day,o.hour,o.minute,o.second)-d.getTime())/60000;}
         \\function band(col){var b=document.getElementById("clkband");if(!b)return;var cells=col<0?[]:CEL.querySelectorAll('.clk-cell[data-c="'+col+'"]');if(!cells.length){b.style.display="none";return;}var o=CEL.getBoundingClientRect(),f=cells[0].getBoundingClientRect(),l=cells[cells.length-1].getBoundingClientRect();b.style.display="block";b.style.left=(f.left-o.left)+"px";b.style.top=(f.top-o.top)+"px";b.style.width=f.width+"px";b.style.height=(l.bottom-f.top)+"px";}
         \\function drawClocks(){
-        \\var now=new Date();var base=new Date(now.getTime());base.setMinutes(0,0,0);base=new Date(base.getTime()-NOW*3600000);var h='<div class="clk-band" id="clkband"></div>';
+        \\var now=new Date();var base=new Date(now.getTime());base.setMinutes(0,0,0);base=new Date(base.getTime()-NOW*3600000);WBASE=base.getTime();var h='<div class="clk-band" id="clkband"></div>';
         \\var order=CK.slice().sort(function(a,b){return off(b.tz,now)-off(a.tz,now);});
         \\for(var r=0;r<order.length;r++){var c=order[r],p=pz(now,c.tz),cells="";
-        \\for(var j=0;j<24;j++){var hp=pz(new Date(base.getTime()+j*3600000),c.tz),hr=+hp.hour;
-        \\var cls="clk-cell"+((hr<7||hr>=19)?" night":"")+(hr===0?" day":"")+(j===NOW?" cur":"");
-        \\cells+='<span class="'+cls+'" data-c="'+j+'" title="'+esc(hp.weekday+" "+hp.day+" "+hp.month)+'">'+(hr===0?hp.day:hp.hour)+'</span>';}
+        \\for(var j=0;j<24;j++){var ms=base.getTime()+j*3600000,hp=pz(new Date(ms),c.tz),hr=+hp.hour;
+        \\var cls="clk-cell"+((hr<7||hr>=19)?" night":"")+(hr===0?" day":"")+(MARKS[ms]?" mark":"")+(j===NOW?" cur":"");
+        \\cells+='<span class="'+cls+'" data-c="'+j+'" data-k="'+ms+'" title="'+esc(hp.weekday+" "+hp.day+" "+hp.month)+'">'+(hr===0?hp.day:hp.hour)+'</span>';}
         \\h+='<div class="clk-row"><div class="clk-label"><span class="clk-city">'+esc(c.label)+'</span><span class="clk-now">'+p.hour+':'+p.minute+'</span><span class="clk-zone">'+esc(p.weekday+" "+(p.timeZoneName||""))+'</span></div><div class="clk-cells">'+cells+'</div></div>';}
         \\CEL.innerHTML=h;band(hovCol);}
         \\CEL.addEventListener("mousemove",function(e){var c=e.target.closest?e.target.closest(".clk-cell"):null;var n=c?+c.getAttribute("data-c"):-1;if(n!==hovCol){hovCol=n;band(hovCol);}});
         \\CEL.addEventListener("mouseleave",function(){hovCol=-1;band(-1);});
+        \\CEL.addEventListener("click",function(e){var c=e.target.closest?e.target.closest(".clk-cell"):null;if(!c)return;var k=c.getAttribute("data-k");if(MARKS[k])delete MARKS[k];else MARKS[k]=1;saveMarks();drawClocks();});
         \\drawClocks();setInterval(drawClocks,1000);
         \\
     );
